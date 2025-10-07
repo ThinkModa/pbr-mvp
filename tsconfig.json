@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES6"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/shared/*": [
+        "./packages/shared/src/*"
+      ],
+      "@/ui/*": [
+        "./packages/ui/src/*"
+      ],
+      "@/api/*": [
+        "./packages/api/src/*"
+      ],
+      "@/database/*": [
+        "./packages/database/src/*"
+      ]
+    }
+  },
+  "include": [],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "dist",
+    "build"
+  ],
+  "extends": "expo/tsconfig.base"
+}
