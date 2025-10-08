@@ -322,7 +322,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
             {/* Date and Time */}
             <View style={styles.dateTimeSection}>
               <Text style={styles.dateTimeText}>
-                📅 {formatDate(startDate)} • {formatTime(startDate)}
+                📅 {formatDate(startDate)} • {formatTime(startDate)} - {formatTime(endDate)}
               </Text>
             </View>
 
@@ -459,7 +459,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
             {/* Vendors Section */}
             {getVendors().length > 0 && (
               <View style={styles.vendorsSection}>
-                <Text style={styles.sectionTitle}>🛍️ Vendors ({getVendors().length})</Text>
+                <Text style={styles.sectionTitle}>Vendors ({getVendors().length})</Text>
                 <ScrollView 
                   horizontal 
                   showsHorizontalScrollIndicator={false}

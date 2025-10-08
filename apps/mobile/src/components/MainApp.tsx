@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../contexts/MockAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
@@ -173,9 +174,9 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
       });
     }
     
-    // Close the modal
-    setModalVisible(false);
-    setSelectedEvent(null);
+    // Don't close the modal automatically - let user see the button state change
+    // setModalVisible(false);
+    // setSelectedEvent(null);
   };
 
   const handleActivityPress = (activity: any) => {
@@ -357,14 +358,16 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
         {item.activities && item.activities.length > 0 && (
           <View style={styles.activitiesSection}>
             <Text style={styles.activitiesTitle}>Activities ({item.activities.length})</Text>
-            {item.activities.map((activity) => (
+            {item.activities.slice(0, 3).map((activity) => (
               <View key={activity.id} style={styles.activityItem}>
                 <Text style={styles.activityName}>• {activity.title}</Text>
-                <Text style={styles.activityTime}>
-                  {new Date(activity.start_time + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}
-                </Text>
               </View>
             ))}
+            {item.activities.length > 3 && (
+              <View style={styles.activityItem}>
+                <Text style={styles.activityName}>• +{item.activities.length - 3} more activities</Text>
+              </View>
+            )}
           </View>
         )}
         <View style={styles.eventCardFooter}>
@@ -428,6 +431,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     {showMyEvents ? 'All Events' : 'My Events'}
                   </Text>
                 </TouchableOpacity>
+
               </View>
       </View>
       {events.length === 0 ? (
@@ -504,9 +508,17 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
           >
             {modalView === 'event' && selectedEvent ? (
               <View>
-                {/* Event Image Placeholder */}
+                {/* Event Image */}
                 <View style={{ height: 200, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 48, color: '#9CA3AF' }}>📅</Text>
+                  {selectedEvent.cover_image_url ? (
+                    <Image
+                      source={{ uri: selectedEvent.cover_image_url }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={{ fontSize: 48, color: '#9CA3AF' }}>📅</Text>
+                  )}
                 </View>
 
                 {/* Enhanced Event Banner - Airbnb Style */}
@@ -653,52 +665,102 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                       <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
                         Activities ({selectedEvent.activities.length})
                       </Text>
-                      {selectedEvent.activities.map((activity) => (
-                        <TouchableOpacity
-                          key={activity.id}
-                          style={{ 
-                            backgroundColor: 'white', 
-                            padding: 15, 
-                            borderRadius: 12, 
-                            marginBottom: 10,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.1,
-                            shadowRadius: 4,
-                            elevation: 3,
-                          }}
-                          onPress={() => handleActivityPress(activity)}
-                        >
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
-                                {activity.title}
-                              </Text>
-                              <Text style={{ fontSize: 14, color: '#6B7280' }}>
-                                {new Date(activity.start_time + 'Z').toLocaleTimeString('en-US', {
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                  timeZone: 'UTC'
-                                })} - {new Date(activity.end_time + 'Z').toLocaleTimeString('en-US', {
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                  timeZone: 'UTC'
+                      {(() => {
+                        // Group activities by date
+                        const activitiesByDate = selectedEvent.activities.reduce((groups, activity) => {
+                          const date = new Date(activity.start_time + 'Z').toDateString();
+                          if (!groups[date]) {
+                            groups[date] = [];
+                          }
+                          groups[date].push(activity);
+                          return groups;
+                        }, {} as Record<string, typeof selectedEvent.activities>);
+
+                        // Sort dates
+                        const sortedDates = Object.keys(activitiesByDate).sort((a, b) => 
+                          new Date(a).getTime() - new Date(b).getTime()
+                        );
+
+                        return sortedDates.map((dateString) => {
+                          const activities = activitiesByDate[dateString];
+                          const date = new Date(dateString);
+                          
+                          return (
+                            <View key={dateString} style={{ marginBottom: 20 }}>
+                              {/* Date Header */}
+                              <Text style={{ 
+                                fontSize: 16, 
+                                fontWeight: 'bold', 
+                                color: '#111827', 
+                                marginBottom: 12,
+                                paddingHorizontal: 4
+                              }}>
+                                {date.toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
                                 })}
                               </Text>
+                              {/* Date Separator */}
+                              <View style={{ 
+                                height: 1, 
+                                backgroundColor: '#E5E7EB', 
+                                marginBottom: 12,
+                                marginHorizontal: 4
+                              }} />
+                              
+                              {/* Activities for this date */}
+                              {activities.map((activity, activityIndex) => (
+                                <TouchableOpacity
+                                  key={activity.id}
+                                  style={{ 
+                                    backgroundColor: 'white', 
+                                    padding: 15, 
+                                    borderRadius: 12, 
+                                    marginBottom: activityIndex === activities.length - 1 ? 0 : 10,
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 2 },
+                                    shadowOpacity: 0.1,
+                                    shadowRadius: 4,
+                                    elevation: 3,
+                                  }}
+                                  onPress={() => handleActivityPress(activity)}
+                                >
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+                                        {activity.title}
+                                      </Text>
+                                      <Text style={{ fontSize: 14, color: '#6B7280' }}>
+                                        {new Date(activity.start_time + 'Z').toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          timeZone: 'UTC'
+                                        })} - {new Date(activity.end_time + 'Z').toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          timeZone: 'UTC'
+                                        })}
+                                      </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 18, color: '#9CA3AF' }}>›</Text>
+                                  </View>
+                                  <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 8 }} numberOfLines={2}>
+                                    {activity.description || 'No description available.'}
+                                  </Text>
+                                  {activity.location?.name && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                      <Text style={{ fontSize: 14, color: '#6B7280', marginRight: 4 }}>📍</Text>
+                                      <Text style={{ fontSize: 14, color: '#6B7280' }}>{activity.location.name}</Text>
+                                    </View>
+                                  )}
+                                </TouchableOpacity>
+                              ))}
                             </View>
-                            <Text style={{ fontSize: 18, color: '#9CA3AF' }}>›</Text>
-                          </View>
-                          <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 8 }} numberOfLines={2}>
-                            {activity.description || 'No description available.'}
-                          </Text>
-                          {activity.location?.name && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Text style={{ fontSize: 14, color: '#6B7280', marginRight: 4 }}>📍</Text>
-                              <Text style={{ fontSize: 14, color: '#6B7280' }}>{activity.location.name}</Text>
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      ))}
+                          );
+                        });
+                      })()}
                     </View>
                   )}
 
@@ -897,7 +959,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     return totalVendors > 0 && (
                       <View style={{ marginBottom: 20 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
-                          🛍️ Vendors ({totalVendors})
+                          Vendors ({totalVendors})
                         </Text>
                         <ScrollView 
                           horizontal 
@@ -1010,9 +1072,18 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
               <View>
                 {/* Event Banner */}
                 {selectedEvent && (
-                  <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, margin: 20, marginBottom: 0 }}>
-                    <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center' }}>
-                      📅 {selectedEvent.title}
+                  <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, margin: 20, marginBottom: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {selectedEvent.cover_image_url ? (
+                      <Image
+                        source={{ uri: selectedEvent.cover_image_url }}
+                        style={{ width: 24, height: 24, borderRadius: 4 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 16, color: '#6B7280' }}>📅</Text>
+                    )}
+                    <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', flex: 1 }}>
+                      {selectedEvent.title}
                     </Text>
                   </View>
                 )}
@@ -1039,6 +1110,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                         day: 'numeric',
                         timeZone: 'UTC'
                       })} • {new Date(selectedActivity.start_time + 'Z').toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        timeZone: 'UTC'
+                      })} - {new Date(selectedActivity.end_time + 'Z').toLocaleTimeString('en-US', {
                         hour: 'numeric',
                         minute: '2-digit',
                         timeZone: 'UTC'
@@ -1273,7 +1348,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     return totalVendors > 0 && (
                       <View style={{ marginBottom: 20 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
-                          🛍️ Vendors ({totalVendors})
+                          Vendors ({totalVendors})
                         </Text>
                         <ScrollView 
                           horizontal 
@@ -1407,15 +1482,36 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
             {modalView === 'event' && selectedEvent ? (
               <TouchableOpacity
                 style={{ 
-                  backgroundColor: '#D29507', 
+                  backgroundColor: userRSVPs[selectedEvent.id] === 'attending' ? '#DC2626' : '#D29507', 
                   paddingVertical: 15, 
                   borderRadius: 8, 
                   alignItems: 'center'
                 }}
-                onPress={() => handleEventRSVP(selectedEvent.id, 'attending')}
+                onPress={() => {
+                  if (userRSVPs[selectedEvent.id] === 'attending') {
+                    // Show confirmation modal for removal
+                    Alert.alert(
+                      'Remove RSVP',
+                      'Are you sure you won\'t be attending this event?',
+                      [
+                        {
+                          text: 'No',
+                          style: 'cancel',
+                        },
+                        {
+                          text: 'Yes',
+                          style: 'destructive',
+                          onPress: () => handleEventRSVP(selectedEvent.id, null),
+                        },
+                      ]
+                    );
+                  } else {
+                    handleEventRSVP(selectedEvent.id, 'attending');
+                  }
+                }}
               >
                 <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
-                  RSVP for Event
+                  {userRSVPs[selectedEvent.id] === 'attending' ? 'Remove RSVP' : 'RSVP here'}
                 </Text>
               </TouchableOpacity>
             ) : modalView === 'activity' && selectedActivity ? (
@@ -1460,6 +1556,19 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
         organization={selectedOrganization}
         onClose={() => setOrganizationModalVisible(false)}
       />
+
+      {/* Floating Action Button for Create Event - Only show for admins */}
+      {user?.role === 'admin' && (
+        <TouchableOpacity
+          style={styles.floatingActionButton}
+          onPress={() => {
+            // TODO: Implement create event functionality
+            Alert.alert('Create Event', 'Event creation functionality coming soon!');
+          }}
+        >
+          <Text style={styles.floatingActionButtonText}>+</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };
@@ -1828,6 +1937,27 @@ const styles = StyleSheet.create({
   },
   myEventsButtonTextActive: {
     color: 'white',
+  },
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 35, // 35px from the bottom
+    right: 20,
+    backgroundColor: '#265451', // Using your brand color from the palette
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  floatingActionButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   editButton: {
     backgroundColor: '#265451',

@@ -127,7 +127,7 @@ const SpeakerModal: React.FC<SpeakerModalProps> = ({ visible, speaker, onClose }
             )}
 
             {/* Social Links */}
-            {Object.entries(speaker.socialLinks).map(([platform, url]) => {
+            {speaker.socialLinks && Object.entries(speaker.socialLinks).map(([platform, url]) => {
               if (!url) return null;
               return (
                 <View key={platform} style={styles.contactItem}>

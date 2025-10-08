@@ -7,6 +7,19 @@ import { organizations } from './organizations';
 export const eventStatusEnum = z.enum(['draft', 'published', 'cancelled', 'completed']);
 export type EventStatus = z.infer<typeof eventStatusEnum>;
 
+// Activity Categories table
+export const activityCategories = pgTable('activity_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 100 }).notNull().unique(),
+  description: text('description'),
+  color: varchar('color', { length: 7 }).notNull().default('#3B82F6'), // Hex color code
+  icon: varchar('icon', { length: 50 }), // Icon name or emoji
+  isActive: boolean('is_active').notNull().default(true),
+  displayOrder: integer('display_order').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // Events table
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -65,6 +78,7 @@ export const events = pgTable('events', {
 export const activities = pgTable('activities', {
   id: uuid('id').primaryKey().defaultRandom(),
   eventId: uuid('event_id').notNull(),
+  categoryId: uuid('category_id').references(() => activityCategories.id, { onDelete: 'set null' }),
   title: varchar('title', { length: 200 }).notNull(),
   description: text('description'),
   startTime: timestamp('start_time').notNull(),
@@ -113,7 +127,17 @@ export const insertActivitySchema = createInsertSchema(activities, {
 
 export const selectActivitySchema = createSelectSchema(activities);
 
+// Activity Categories schemas
+export const insertActivityCategorySchema = createInsertSchema(activityCategories, {
+  name: z.string().min(1).max(100),
+  color: z.string().regex(/^#[0-9A-F]{6}$/i),
+});
+
+export const selectActivityCategorySchema = createSelectSchema(activityCategories);
+
 export type Event = z.infer<typeof selectEventSchema>;
 export type NewEvent = z.infer<typeof insertEventSchema>;
 export type Activity = z.infer<typeof selectActivitySchema>;
 export type NewActivity = z.infer<typeof insertActivitySchema>;
+export type ActivityCategory = z.infer<typeof selectActivityCategorySchema>;
+export type NewActivityCategory = z.infer<typeof insertActivityCategorySchema>;

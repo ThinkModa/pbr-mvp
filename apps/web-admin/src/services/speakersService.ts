@@ -345,4 +345,168 @@ export class SpeakersService {
 
     console.log('✅ Speaker deleted');
   }
+
+  // Get speaker's assigned events
+  static async getSpeakerEvents(speakerId: string): Promise<string[]> {
+    console.log('Getting speaker events:', { speakerId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/event_speakers?speaker_id=eq.${speakerId}&select=event_id`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error getting speaker events:', errorText);
+      throw new Error(`Failed to get speaker events: ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Get speaker events response text:', responseText);
+    
+    if (!responseText.trim()) {
+      console.log('✅ No events found for speaker (empty response)');
+      return [];
+    }
+    
+    const eventData = JSON.parse(responseText);
+    const eventIds = eventData.map((item: any) => item.event_id);
+    
+    console.log('✅ Retrieved speaker events:', eventIds);
+    return eventIds;
+  }
+
+  // Get speaker's assigned activities
+  static async getSpeakerActivities(speakerId: string): Promise<string[]> {
+    console.log('Getting speaker activities:', { speakerId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_speakers?speaker_id=eq.${speakerId}&select=activity_id`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error getting speaker activities:', errorText);
+      throw new Error(`Failed to get speaker activities: ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Get speaker activities response text:', responseText);
+    
+    if (!responseText.trim()) {
+      console.log('✅ No activities found for speaker (empty response)');
+      return [];
+    }
+    
+    const activityData = JSON.parse(responseText);
+    const activityIds = activityData.map((item: any) => item.activity_id);
+    
+    console.log('✅ Retrieved speaker activities:', activityIds);
+    return activityIds;
+  }
+
+  // Assign speaker to activity
+  static async assignSpeakerToActivity(speakerId: string, activityId: string): Promise<void> {
+    console.log('Assigning speaker to activity:', { speakerId, activityId });
+    
+    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_speakers`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        speaker_id: speakerId,
+        activity_id: activityId,
+        role: 'speaker',
+        display_order: 0,
+        is_confirmed: true,
+        is_public: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error assigning speaker to activity:', errorText);
+      throw new Error(`Failed to assign speaker to activity: ${errorText}`);
+    }
+
+    console.log('✅ Speaker assigned to activity');
+  }
+
+  // Unassign speaker from activity
+  static async unassignSpeakerFromActivity(speakerId: string, activityId: string): Promise<void> {
+    console.log('Unassigning speaker from activity:', { speakerId, activityId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_speakers?speaker_id=eq.${speakerId}&activity_id=eq.${activityId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error unassigning speaker from activity:', errorText);
+      throw new Error(`Failed to unassign speaker from activity: ${errorText}`);
+    }
+
+    console.log('✅ Speaker unassigned from activity');
+  }
+
+  // Bulk assign speaker to multiple activities
+  static async assignSpeakerToActivities(speakerId: string, activityIds: string[]): Promise<void> {
+    console.log('Bulk assigning speaker to activities:', { speakerId, activityIds });
+    
+    // First, remove existing assignments for this speaker
+    await this.unassignSpeakerFromAllActivities(speakerId);
+    
+    // Then assign to new activities
+    const assignments = activityIds.map(activityId => ({
+      speaker_id: speakerId,
+      activity_id: activityId,
+      role: 'speaker',
+      display_order: 0,
+      is_confirmed: true,
+      is_public: true,
+    }));
+
+    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_speakers`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(assignments),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error bulk assigning speaker to activities:', errorText);
+      throw new Error(`Failed to bulk assign speaker to activities: ${errorText}`);
+    }
+
+    console.log('✅ Speaker bulk assigned to activities');
+  }
+
+  // Unassign speaker from all activities
+  static async unassignSpeakerFromAllActivities(speakerId: string): Promise<void> {
+    console.log('Unassigning speaker from all activities:', { speakerId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_speakers?speaker_id=eq.${speakerId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error unassigning speaker from all activities:', errorText);
+      throw new Error(`Failed to unassign speaker from all activities: ${errorText}`);
+    }
+
+    console.log('✅ Speaker unassigned from all activities');
+  }
 }

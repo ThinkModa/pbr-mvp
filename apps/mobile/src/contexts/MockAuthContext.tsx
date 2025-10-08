@@ -77,8 +77,8 @@ export const MockAuthProvider: React.FC<MockAuthProviderProps> = ({ children }) 
     const mockUser: MockUser = {
       id: '33333333-3333-3333-3333-333333333333', // Existing user ID from database
       email,
-      name: 'Regular User', // This would come from the database
-      role: 'general',
+      name: 'Admin User', // This would come from the database
+      role: 'admin',
     };
     
     setUser(mockUser);
@@ -93,8 +93,8 @@ export const MockAuthProvider: React.FC<MockAuthProviderProps> = ({ children }) 
     const mockUser: MockUser = {
       id: '33333333-3333-3333-3333-333333333333', // Existing user ID from database
       email: 'user@pbr.com',
-      name: 'Regular User',
-      role: 'general',
+      name: 'Admin User',
+      role: 'admin',
     };
     
     setUser(mockUser);

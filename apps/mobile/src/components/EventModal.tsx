@@ -161,9 +161,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
       await RSVPService.createEventRSVP(event.id, user.id, status);
       
       setUserRSVP(status);
-      if (status === 'attending') {
-        onRSVP(event.id, status);
-      }
+      onRSVP(event.id, status);
       
       // Show confirmation
       Alert.alert(
@@ -182,29 +180,46 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const handleRemoveRSVP = async () => {
     if (!event || !user) return;
     
-    setRsvpLoading(true);
-    try {
-      // Get the existing RSVP to delete it
-      const existingRSVP = await RSVPService.getUserEventRSVP(event.id, user.id);
-      if (existingRSVP) {
-        await RSVPService.deleteEventRSVP(existingRSVP.id);
-      }
-      
-      setUserRSVP(null);
-      onRSVP(event.id, null); // Notify parent to remove from userRSVPs
-      
-      // Show confirmation
-      Alert.alert(
-        'RSVP Removed',
-        `You're no longer going to ${event.title}`,
-        [{ text: 'OK' }]
-      );
-    } catch (error) {
-      console.error('Error removing RSVP:', error);
-      Alert.alert('Error', 'Failed to remove RSVP. Please try again.');
-    } finally {
-      setRsvpLoading(false);
-    }
+    // Show confirmation modal first
+    Alert.alert(
+      'Remove RSVP',
+      'Are you sure you won\'t be attending this event?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes',
+          style: 'destructive',
+          onPress: async () => {
+            setRsvpLoading(true);
+            try {
+              // Get the existing RSVP to delete it
+              const existingRSVP = await RSVPService.getUserEventRSVP(event.id, user.id);
+              if (existingRSVP) {
+                await RSVPService.deleteEventRSVP(existingRSVP.id);
+              }
+              
+              setUserRSVP(null);
+              onRSVP(event.id, null); // Notify parent to remove from userRSVPs
+              
+              // Show success confirmation
+              Alert.alert(
+                'RSVP Removed',
+                `You're no longer going to ${event.title}`,
+                [{ text: 'OK' }]
+              );
+            } catch (error) {
+              console.error('Error removing RSVP:', error);
+              Alert.alert('Error', 'Failed to remove RSVP. Please try again.');
+            } finally {
+              setRsvpLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const loadEventSpeakers = async () => {
@@ -427,43 +442,83 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
               {event.activities && event.activities.length > 0 && (
                 <View style={styles.activitiesSection}>
                   <Text style={styles.sectionTitle}>Activities ({event.activities.length})</Text>
-                  {event.activities.map((activity, index) => (
-                    <TouchableOpacity
-                      key={activity.id}
-                      style={styles.activityCard}
-                      onPress={() => {
-                        console.log('🎯 Activity TouchableOpacity pressed:', activity.title);
-                        handleActivityPress(activity);
-                      }}
-                    >
-                      <View style={styles.activityHeader}>
-                        <View style={styles.activityInfo}>
-                          <Text style={styles.activityTitle}>{activity.title}</Text>
-                          <Text style={styles.activityTime}>
-                            {new Date(activity.start_time + 'Z').toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              timeZone: 'UTC'
-                            })} - {new Date(activity.end_time + 'Z').toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              timeZone: 'UTC'
+                  {(() => {
+                    // Group activities by date
+                    const activitiesByDate = event.activities.reduce((groups, activity) => {
+                      const date = new Date(activity.start_time + 'Z').toDateString();
+                      if (!groups[date]) {
+                        groups[date] = [];
+                      }
+                      groups[date].push(activity);
+                      return groups;
+                    }, {} as Record<string, typeof event.activities>);
+
+                    // Sort dates
+                    const sortedDates = Object.keys(activitiesByDate).sort((a, b) => 
+                      new Date(a).getTime() - new Date(b).getTime()
+                    );
+
+                    return sortedDates.map((dateString, dateIndex) => {
+                      const activities = activitiesByDate[dateString];
+                      const date = new Date(dateString);
+                      
+                      return (
+                        <View key={dateString} style={styles.dateGroup}>
+                          {/* Date Header */}
+                          <Text style={styles.dateHeader}>
+                            {date.toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
                             })}
                           </Text>
+                          
+                          {/* Activities for this date */}
+                          {activities.map((activity, activityIndex) => (
+                            <TouchableOpacity
+                              key={activity.id}
+                              style={[
+                                styles.activityCard,
+                                activityIndex === activities.length - 1 && styles.lastActivityInGroup
+                              ]}
+                              onPress={() => {
+                                console.log('🎯 Activity TouchableOpacity pressed:', activity.title);
+                                handleActivityPress(activity);
+                              }}
+                            >
+                              <View style={styles.activityHeader}>
+                                <View style={styles.activityInfo}>
+                                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                                  <Text style={styles.activityTime}>
+                                    {new Date(activity.start_time + 'Z').toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      timeZone: 'UTC'
+                                    })} - {new Date(activity.end_time + 'Z').toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      timeZone: 'UTC'
+                                    })}
+                                  </Text>
+                                </View>
+                                <Text style={styles.activityArrow}>›</Text>
+                              </View>
+                              <Text style={styles.activityDescription} numberOfLines={2}>
+                                {activity.description || 'No description available.'}
+                              </Text>
+                              {activity.location?.name && (
+                                <View style={styles.activityLocation}>
+                                  <Text style={styles.activityLocationIcon}>📍</Text>
+                                  <Text style={styles.activityLocationText}>{activity.location.name}</Text>
+                                </View>
+                              )}
+                            </TouchableOpacity>
+                          ))}
                         </View>
-                        <Text style={styles.activityArrow}>›</Text>
-                      </View>
-                      <Text style={styles.activityDescription} numberOfLines={2}>
-                        {activity.description || 'No description available.'}
-                      </Text>
-                      {activity.location?.name && (
-                        <View style={styles.activityLocation}>
-                          <Text style={styles.activityLocationIcon}>📍</Text>
-                          <Text style={styles.activityLocationText}>{activity.location.name}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                      );
+                    });
+                  })()}
                 </View>
               )}
 
@@ -708,7 +763,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                 disabled={rsvpLoading}
               >
                 <Text style={styles.goingButtonText} numberOfLines={1}>
-                  {rsvpLoading ? 'RSVPing...' : 'RSVP for event'}
+                  {rsvpLoading ? 'RSVPing...' : 'RSVP here'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -890,6 +945,16 @@ const styles = StyleSheet.create({
   activitiesSection: {
     marginBottom: 32,
   },
+  dateGroup: {
+    marginBottom: 24,
+  },
+  dateHeader: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
   activityCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -902,6 +967,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+  },
+  lastActivityInGroup: {
+    marginBottom: 0,
   },
   activityHeader: {
     flexDirection: 'row',

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import EventsPage from './pages/EventsPage';
 
-type Page = 'dashboard' | 'events' | 'speakers' | 'organizations';
+type Page = 'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -93,11 +92,7 @@ function App() {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // Simple routing based on current page
-  if (currentPage === 'events') {
-    return <EventsPage onNavigate={setCurrentPage} onLogout={handleLogout} />;
-  }
-
+  // All pages are handled by DashboardPage
   return <DashboardPage onNavigate={setCurrentPage} onLogout={handleLogout} />;
 }
 

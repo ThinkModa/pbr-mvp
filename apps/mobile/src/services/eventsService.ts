@@ -18,6 +18,7 @@ export interface EventWithActivities {
   show_capacity: boolean;
   show_price: boolean;
   show_attendee_count: boolean;
+  cover_image_url: string | null;
   activities: Activity[];
 }
 

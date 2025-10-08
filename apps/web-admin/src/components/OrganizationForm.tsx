@@ -40,6 +40,11 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [assignedEvents, setAssignedEvents] = useState<string[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  
+  // Activity assignment state
+  const [assignedActivities, setAssignedActivities] = useState<string[]>([]);
+  const [upcomingActivities, setUpcomingActivities] = useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
 
   useEffect(() => {
     if (organization) {
@@ -76,14 +81,16 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
     try {
       setLoadingEvents(true);
       
-      // Load upcoming events and assigned events in parallel
-      const [events, assignedEventIds] = await Promise.all([
+      // Load upcoming events, assigned events, and assigned activities in parallel
+      const [events, assignedEventIds, assignedActivityIds] = await Promise.all([
         EventsService.getUpcomingEvents(),
-        OrganizationsService.getOrganizationEvents(organization.id)
+        OrganizationsService.getOrganizationEvents(organization.id),
+        OrganizationsService.getOrganizationActivities(organization.id)
       ]);
       
       setUpcomingEvents(events);
       setAssignedEvents(assignedEventIds);
+      setAssignedActivities(assignedActivityIds);
     } catch (error) {
       console.error('Error loading events and assignments:', error);
     } finally {
@@ -173,10 +180,71 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
         // Unassign organization from event
         await OrganizationsService.unassignOrganizationFromEvent(organization.id, eventId);
         setAssignedEvents(prev => prev.filter(id => id !== eventId));
+        // Also remove from activities when unassigned from event
+        await loadOrganizationActivities();
       }
+      
+      // Reload activities when event assignments change
+      await loadUpcomingActivities();
     } catch (error) {
       console.error('Error updating event assignment:', error);
       alert('Failed to update event assignment. Please try again.');
+    }
+  };
+
+  const loadOrganizationActivities = async () => {
+    if (!organization) return;
+    
+    try {
+      setLoadingActivities(true);
+      const activityIds = await OrganizationsService.getOrganizationActivities(organization.id);
+      setAssignedActivities(activityIds);
+      
+      // Load upcoming activities from assigned events
+      await loadUpcomingActivities();
+    } catch (error) {
+      console.error('Error loading organization activities:', error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  const loadUpcomingActivities = async () => {
+    if (!organization || assignedEvents.length === 0) return;
+    
+    try {
+      const eventsData = await EventsService.getEvents();
+      const assignedEventsData = eventsData.filter(event => 
+        assignedEvents.includes(event.id)
+      );
+      
+      // Flatten all activities from assigned events
+      const allActivities = assignedEventsData.flatMap(event => 
+        event.activities.map(activity => ({
+          ...activity,
+          eventName: event.name
+        }))
+      );
+      
+      setUpcomingActivities(allActivities);
+    } catch (error) {
+      console.error('Error loading upcoming activities:', error);
+    }
+  };
+
+  const handleActivityAssignment = async (activityId: string, isAssigned: boolean) => {
+    if (!organization) return;
+    
+    try {
+      if (isAssigned) {
+        await OrganizationsService.assignOrganizationToActivity(organization.id, activityId);
+        setAssignedActivities(prev => [...prev, activityId]);
+      } else {
+        await OrganizationsService.unassignOrganizationFromActivity(organization.id, activityId);
+        setAssignedActivities(prev => prev.filter(id => id !== activityId));
+      }
+    } catch (error) {
+      console.error('Error updating activity assignment:', error);
     }
   };
 
@@ -554,7 +622,120 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
                           color: '#6b7280',
                           margin: '2px 0 0 0'
                         }}>
-                          {eventDate} • {event.location}
+                          {eventDate} • {event.location?.name || 'Location TBD'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Activity Assignment */}
+        {organization && assignedEvents.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827' }}>Activity Assignment</h3>
+            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
+              Select which activities this organization should be assigned to within their assigned events:
+            </p>
+            
+            {loadingActivities ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                padding: '24px' 
+              }}>
+                <div style={{
+                  width: '24px',
+                  height: '24px',
+                  border: '2px solid #e5e7eb',
+                  borderTop: '2px solid #3B82F6',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+                <span style={{ marginLeft: '8px', fontSize: '14px', color: '#6b7280' }}>
+                  Loading activities...
+                </span>
+              </div>
+            ) : upcomingActivities.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '24px',
+                backgroundColor: '#f9fafb',
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb'
+              }}>
+                <p style={{ fontSize: '14px', color: '#6b7280' }}>
+                  No activities found for assigned events.
+                </p>
+              </div>
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '12px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                padding: '16px'
+              }}>
+                {upcomingActivities.map((activity) => {
+                  const isAssigned = assignedActivities.includes(activity.id);
+                  const activityDate = new Date(activity.start_time).toLocaleDateString();
+                  const activityTime = `${new Date(activity.start_time).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })} - ${new Date(activity.end_time).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}`;
+                  
+                  return (
+                    <div key={activity.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px',
+                      padding: '8px',
+                      backgroundColor: isAssigned ? '#f0f9ff' : 'transparent',
+                      borderRadius: '4px',
+                      border: isAssigned ? '1px solid #bae6fd' : '1px solid transparent'
+                    }}>
+                      <input
+                        type="checkbox"
+                        id={`activity-${activity.id}`}
+                        checked={isAssigned}
+                        onChange={(e) => handleActivityAssignment(activity.id, e.target.checked)}
+                        style={{ 
+                          height: '16px', 
+                          width: '16px', 
+                          color: '#2563eb', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: '4px' 
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <label 
+                          htmlFor={`activity-${activity.id}`}
+                          style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '500', 
+                            color: '#111827',
+                            cursor: 'pointer',
+                            display: 'block'
+                          }}
+                        >
+                          {activity.title}
+                        </label>
+                        <p style={{ 
+                          fontSize: '12px', 
+                          color: '#6b7280', 
+                          margin: '2px 0 0 0' 
+                        }}>
+                          {activityDate} • {activityTime} • {activity.eventName}
                         </p>
                       </div>
                     </div>
@@ -638,6 +819,7 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
           </button>
         </div>
       </form>
+
     </div>
   );
 };

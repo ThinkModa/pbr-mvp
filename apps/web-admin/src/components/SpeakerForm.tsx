@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Speaker, CreateSpeakerData, UpdateSpeakerData } from '../services/speakersService';
+import { Speaker, CreateSpeakerData, UpdateSpeakerData, SpeakersService } from '../services/speakersService';
 import { EventsService } from '../services/eventsService';
 import { ImageUploadService } from '../services/imageUploadService';
 
@@ -39,6 +39,11 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [assignedEvents, setAssignedEvents] = useState<string[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  
+  // Activity assignment state
+  const [assignedActivities, setAssignedActivities] = useState<string[]>([]);
+  const [upcomingActivities, setUpcomingActivities] = useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
   
   // Image upload state
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -84,6 +89,10 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
         if (speaker) {
           const assigned = await EventsService.getSpeakerEvents(speaker.id);
           setAssignedEvents(assigned);
+          
+          // Load assigned activities
+          const activities = await SpeakersService.getSpeakerActivities(speaker.id);
+          setAssignedActivities(activities);
         }
       } catch (error) {
         console.error('Error loading events:', error);
@@ -134,10 +143,71 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
       } else {
         await EventsService.unassignSpeakerFromEvent(speaker.id, eventId);
         setAssignedEvents(prev => prev.filter(id => id !== eventId));
+        // Also remove from activities when unassigned from event
+        await loadSpeakerActivities();
       }
+      
+      // Reload activities when event assignments change
+      await loadUpcomingActivities();
     } catch (error) {
       console.error('Error updating event assignment:', error);
       // You might want to show an error message to the user here
+    }
+  };
+
+  const loadSpeakerActivities = async () => {
+    if (!speaker) return;
+    
+    try {
+      setLoadingActivities(true);
+      const activityIds = await SpeakersService.getSpeakerActivities(speaker.id);
+      setAssignedActivities(activityIds);
+      
+      // Load upcoming activities from assigned events
+      await loadUpcomingActivities();
+    } catch (error) {
+      console.error('Error loading speaker activities:', error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  const loadUpcomingActivities = async () => {
+    if (!speaker || assignedEvents.length === 0) return;
+    
+    try {
+      const eventsData = await EventsService.getEvents();
+      const assignedEventsData = eventsData.filter(event => 
+        assignedEvents.includes(event.id)
+      );
+      
+      // Flatten all activities from assigned events
+      const allActivities = assignedEventsData.flatMap(event => 
+        event.activities.map(activity => ({
+          ...activity,
+          eventName: event.name
+        }))
+      );
+      
+      setUpcomingActivities(allActivities);
+    } catch (error) {
+      console.error('Error loading upcoming activities:', error);
+    }
+  };
+
+  const handleActivityAssignment = async (activityId: string, isAssigned: boolean) => {
+    if (!speaker) return;
+    
+    try {
+      if (isAssigned) {
+        await SpeakersService.assignSpeakerToActivity(speaker.id, activityId);
+        setAssignedActivities(prev => [...prev, activityId]);
+      } else {
+        await SpeakersService.unassignSpeakerFromActivity(speaker.id, activityId);
+        setAssignedActivities(prev => prev.filter(id => id !== activityId));
+      }
+    } catch (error) {
+      console.error('Error updating activity assignment:', error);
     }
   };
 
@@ -646,6 +716,119 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
           </div>
         )}
 
+        {/* Activity Assignment */}
+        {speaker && assignedEvents.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827' }}>Activity Assignment</h3>
+            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
+              Select which activities this speaker should be assigned to within their assigned events:
+            </p>
+            
+            {loadingActivities ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                padding: '24px' 
+              }}>
+                <div style={{
+                  width: '24px',
+                  height: '24px',
+                  border: '2px solid #e5e7eb',
+                  borderTop: '2px solid #3B82F6',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+                <span style={{ marginLeft: '8px', fontSize: '14px', color: '#6b7280' }}>
+                  Loading activities...
+                </span>
+              </div>
+            ) : upcomingActivities.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '24px',
+                backgroundColor: '#f9fafb',
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb'
+              }}>
+                <p style={{ fontSize: '14px', color: '#6b7280' }}>
+                  No activities found for assigned events.
+                </p>
+              </div>
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '12px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                padding: '16px'
+              }}>
+                {upcomingActivities.map((activity) => {
+                  const isAssigned = assignedActivities.includes(activity.id);
+                  const activityDate = new Date(activity.start_time).toLocaleDateString();
+                  const activityTime = `${new Date(activity.start_time).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })} - ${new Date(activity.end_time).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}`;
+                  
+                  return (
+                    <div key={activity.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px',
+                      padding: '8px',
+                      backgroundColor: isAssigned ? '#f0f9ff' : 'transparent',
+                      borderRadius: '4px',
+                      border: isAssigned ? '1px solid #bae6fd' : '1px solid transparent'
+                    }}>
+                      <input
+                        type="checkbox"
+                        id={`activity-${activity.id}`}
+                        checked={isAssigned}
+                        onChange={(e) => handleActivityAssignment(activity.id, e.target.checked)}
+                        style={{ 
+                          height: '16px', 
+                          width: '16px', 
+                          color: '#2563eb', 
+                          border: '1px solid #d1d5db', 
+                          borderRadius: '4px' 
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <label 
+                          htmlFor={`activity-${activity.id}`}
+                          style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '500', 
+                            color: '#111827',
+                            cursor: 'pointer',
+                            display: 'block'
+                          }}
+                        >
+                          {activity.title}
+                        </label>
+                        <p style={{ 
+                          fontSize: '12px', 
+                          color: '#6b7280', 
+                          margin: '2px 0 0 0' 
+                        }}>
+                          {activityDate} • {activityTime} • {activity.eventName}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Settings */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827' }}>Settings</h3>
@@ -697,6 +880,7 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
           </button>
         </div>
       </form>
+
     </div>
   );
 };

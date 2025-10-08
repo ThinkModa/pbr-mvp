@@ -37,18 +37,29 @@ export class EventsService {
     description: string;
     start_date: string;
     end_date: string;
-    location: string;
+    location: {
+      name: string;
+      address: string;
+      coordinates?: { lat: number; lng: number };
+      placeId?: string;
+    };
     capacity?: number;
     price?: number;
     show_capacity?: boolean;
     show_price?: boolean;
     show_attendee_count?: boolean;
+    cover_image_url?: string;
     activities: Array<{
       name: string;
       description: string;
       start_time: string;
       end_time: string;
-      location: string;
+      location: {
+        name: string;
+        address: string;
+        coordinates?: { lat: number; lng: number };
+        placeId?: string;
+      };
       category: string;
       capacity?: number;
       is_required: boolean;
@@ -64,16 +75,18 @@ export class EventsService {
             description: eventData.description,
             start_time: eventData.start_date,
             end_time: eventData.end_date,
-            location: { name: eventData.location },
+            location: eventData.location,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
             show_capacity: eventData.show_capacity ?? true,
             show_price: eventData.show_price ?? true,
             show_attendee_count: eventData.show_attendee_count ?? true,
+            cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             organization_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // PBR Community org
             status: 'published', // Set as published by default
+            is_public: true, // Make events visible to mobile app
           })
       .select()
       .single();
@@ -132,19 +145,30 @@ export class EventsService {
       description: string;
       start_date: string;
       end_date: string;
-      location: string;
+      location: {
+        name: string;
+        address: string;
+        coordinates?: { lat: number; lng: number };
+        placeId?: string;
+      };
       capacity?: number;
       price?: number;
       show_capacity?: boolean;
       show_price?: boolean;
       show_attendee_count?: boolean;
+      cover_image_url?: string;
       activities: Array<{
         id?: string;
         name: string;
         description: string;
         start_time: string;
         end_time: string;
-        location: string;
+        location: {
+          name: string;
+          address: string;
+          coordinates?: { lat: number; lng: number };
+          placeId?: string;
+        };
         category: string;
         capacity?: number;
         is_required: boolean;
@@ -161,15 +185,17 @@ export class EventsService {
             description: eventData.description,
             start_time: eventData.start_date,
             end_time: eventData.end_date,
-            location: { name: eventData.location },
+            location: eventData.location,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
             show_capacity: eventData.show_capacity ?? true,
             show_price: eventData.show_price ?? true,
             show_attendee_count: eventData.show_attendee_count ?? true,
+            cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             status: 'published', // Keep as published when updating
+            is_public: true, // Keep events visible to mobile app
             updated_at: new Date().toISOString(),
           })
       .eq('id', eventId);

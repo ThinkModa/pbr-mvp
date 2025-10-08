@@ -167,7 +167,7 @@ const BusinessModal: React.FC<BusinessModalProps> = ({ visible, business, contac
             )}
 
             {/* Social Links */}
-            {Object.entries(business.socialLinks).map(([platform, url]) => {
+            {business.socialLinks && Object.entries(business.socialLinks).map(([platform, url]) => {
               if (!url) return null;
               return (
                 <View key={platform} style={styles.contactItem}>

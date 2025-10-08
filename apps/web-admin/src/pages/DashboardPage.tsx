@@ -1,20 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Speaker, CreateSpeakerData, UpdateSpeakerData, SpeakersService } from '../services/speakersService';
 import { Organization, CreateOrganizationData, UpdateOrganizationData, OrganizationsService } from '../services/organizationsService';
+import { EventsService, EventWithActivities } from '../services/eventsService';
 import SpeakerCard from '../components/SpeakerCard';
 import SpeakerListCard from '../components/SpeakerListCard';
 import SpeakerForm from '../components/SpeakerForm';
 import OrganizationCard from '../components/OrganizationCard';
 import OrganizationListCard from '../components/OrganizationListCard';
 import OrganizationForm from '../components/OrganizationForm';
+import ConsistentNavigation from '../components/ConsistentNavigation';
+import LocationPicker from '../components/LocationPicker';
+import { ImageUploadService } from '../services/imageUploadService';
+
+// Activity categories with colors and icons
+const ACTIVITY_CATEGORIES = [
+  { id: 'workshop', name: 'Workshop', color: '#3B82F6', icon: '🔧' },
+  { id: 'lunch-learn', name: 'Lunch & Learn', color: '#10B981', icon: '🍽️' },
+  { id: 'networking', name: 'Networking', color: '#8B5CF6', icon: '🤝' },
+  { id: 'presentation', name: 'Presentation', color: '#F59E0B', icon: '📊' },
+  { id: 'panel', name: 'Panel Discussion', color: '#EF4444', icon: '💬' },
+  { id: 'break', name: 'Break', color: '#6B7280', icon: '☕' },
+  { id: 'social', name: 'Social Event', color: '#EC4899', icon: '🎉' },
+  { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
+];
+
+interface Activity {
+  name: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  category: string;
+  capacity?: number;
+  isRequired: boolean;
+}
 
 interface DashboardPageProps {
-  onNavigate: (page: 'dashboard' | 'events' | 'speakers' | 'organizations') => void;
+  onNavigate: (page: 'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings') => void;
   onLogout: () => void;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) => {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'events' | 'speakers' | 'organizations'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings'>('dashboard');
   
   // Speakers state
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -36,6 +63,43 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [organizationSearchTerm, setOrganizationSearchTerm] = useState('');
   const [organizationViewMode, setOrganizationViewMode] = useState<'grid' | 'list'>('grid');
 
+  // Events state
+  const [events, setEvents] = useState<EventWithActivities[]>([]);
+  const [showCreateEventForm, setShowCreateEventForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventWithActivities | null>(null);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  // Event form state
+  const [eventFormData, setEventFormData] = useState({
+    name: '',
+    description: '',
+    startDate: '',
+    endDate: '',
+    location: {
+      name: '',
+      address: '',
+      coordinates: undefined as { lat: number; lng: number } | undefined,
+      placeId: undefined as string | undefined
+    },
+    capacity: '',
+    price: '',
+    showCapacity: true,
+    showPrice: true,
+    showAttendeeCount: true,
+    coverImageUrl: '',
+  });
+
+  // Image upload state
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [eventSpeakers, setEventSpeakers] = useState<string[]>([]);
+  const [eventBusinesses, setEventBusinesses] = useState<string[]>([]);
+
   // Load speakers when speakers view is selected
   useEffect(() => {
     if (currentView === 'speakers') {
@@ -47,6 +111,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   useEffect(() => {
     if (currentView === 'organizations') {
       loadOrganizations();
+    }
+  }, [currentView]);
+
+  // Load events when events view is selected
+  useEffect(() => {
+    if (currentView === 'events') {
+      loadEvents();
     }
   }, [currentView]);
 
@@ -203,7 +274,225 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     );
   });
 
-  const handleNavigation = (page: 'dashboard' | 'events' | 'speakers' | 'organizations') => {
+  // Events functions
+  const loadEvents = async () => {
+    try {
+      setEventsLoading(true);
+      setEventsError(null);
+      const eventsData = await EventsService.getEvents();
+      setEvents(eventsData);
+    } catch (error) {
+      console.error('Error loading events:', error);
+      setEventsError('Failed to load events');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  const handleCreateEvent = async (eventData: any) => {
+    try {
+      setEventsLoading(true);
+      await EventsService.createEvent(eventData);
+      await loadEvents();
+      setShowCreateEventForm(false);
+      resetEventForm();
+    } catch (error) {
+      console.error('Error creating event:', error);
+      setEventsError('Failed to create event');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  const handleUpdateEvent = async (eventId: string, eventData: any) => {
+    try {
+      setEventsLoading(true);
+      await EventsService.updateEvent(eventId, eventData);
+      await loadEvents();
+      setShowCreateEventForm(false);
+      setEditingEvent(null);
+      resetEventForm();
+    } catch (error) {
+      console.error('Error updating event:', error);
+      setEventsError('Failed to update event');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      setEventsLoading(true);
+      await EventsService.deleteEvent(eventId);
+      await loadEvents();
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      setEventsError('Failed to delete event');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  const handleEditEvent = (event: EventWithActivities) => {
+    setEditingEvent(event);
+    setEventFormData({
+      name: event.title,
+      description: event.description,
+      startDate: event.start_time,
+      endDate: event.end_time,
+      location: event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
+      capacity: event.max_capacity?.toString() || '',
+      price: event.price ? (event.price / 100).toString() : '',
+      showCapacity: event.show_capacity,
+      showPrice: event.show_price,
+      showAttendeeCount: event.show_attendee_count,
+      coverImageUrl: event.cover_image_url || '',
+    });
+    setActivities((event.activities || []).map(activity => ({
+      name: activity.title,
+      description: activity.description || '',
+      startTime: activity.startTime,
+      endTime: activity.endTime,
+      location: activity.location?.name || '',
+      category: 'other', // Default category
+      capacity: activity.maxCapacity?.toString() || '',
+      isRequired: activity.isRequired
+    })));
+    setEventSpeakers([]);
+    setEventBusinesses([]);
+    setShowCreateEventForm(true);
+  };
+
+  const handleCancelEventForm = () => {
+    setShowCreateEventForm(false);
+    setEditingEvent(null);
+    resetEventForm();
+  };
+
+  const resetEventForm = () => {
+    setEventFormData({
+      name: '',
+      description: '',
+      startDate: '',
+      endDate: '',
+      location: { name: '', address: '', coordinates: undefined, placeId: undefined },
+      capacity: '',
+      price: '',
+      showCapacity: true,
+      showPrice: true,
+      showAttendeeCount: true,
+      coverImageUrl: '',
+    });
+    setActivities([]);
+    setEventSpeakers([]);
+    setEventBusinesses([]);
+    setImageFile(null);
+    setImagePreview('');
+  };
+
+  const handleEventSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      setEventsLoading(true);
+      setEventsError(null);
+
+      const eventData = {
+        name: eventFormData.name,
+        description: eventFormData.description,
+        start_date: eventFormData.startDate,
+        end_date: eventFormData.endDate,
+        location: eventFormData.location,
+        capacity: eventFormData.capacity ? parseInt(eventFormData.capacity) : undefined,
+        price: eventFormData.price ? parseFloat(eventFormData.price) : undefined,
+        show_capacity: eventFormData.showCapacity,
+        show_price: eventFormData.showPrice,
+        show_attendee_count: eventFormData.showAttendeeCount,
+        cover_image_url: eventFormData.coverImageUrl,
+        activities: activities.map(activity => ({
+          name: activity.name,
+          description: activity.description,
+          start_time: activity.startTime,
+          end_time: activity.endTime,
+          location: activity.location,
+          category: activity.category,
+          capacity: activity.capacity,
+          is_required: activity.isRequired,
+        })),
+      };
+
+      if (editingEvent) {
+        await handleUpdateEvent(editingEvent.id, eventData);
+      } else {
+        await handleCreateEvent(eventData);
+      }
+    } catch (error) {
+      console.error('Error submitting event:', error);
+      setEventsError('Failed to submit event');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setEventFormData(prev => ({ ...prev, coverImageUrl: '' }));
+  };
+
+  const handleUploadImage = async () => {
+    if (!imageFile) return;
+
+    try {
+      setUploadingImage(true);
+      const imageUrl = await ImageUploadService.uploadImage(imageFile);
+      setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
+      setImageFile(null);
+      setImagePreview('');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      setEventsError('Failed to upload image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const addActivity = () => {
+    setActivities([...activities, {
+      name: '',
+      description: '',
+      startTime: '',
+      endTime: '',
+      location: '',
+      category: 'other',
+      capacity: undefined,
+      isRequired: false
+    }]);
+  };
+
+  const updateActivity = (index: number, field: keyof Activity, value: any) => {
+    const updatedActivities = [...activities];
+    updatedActivities[index] = { ...updatedActivities[index], [field]: value };
+    setActivities(updatedActivities);
+  };
+
+  const removeActivity = (index: number) => {
+    setActivities(activities.filter((_, i) => i !== index));
+  };
+
+  const handleNavigation = (page: 'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings') => {
     setCurrentView(page);
     onNavigate(page);
   };
@@ -237,120 +526,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         </div>
 
         {/* Navigation */}
-        <nav style={{ flex: 1, padding: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              onClick={() => handleNavigation('dashboard')}
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '12px', 
-                padding: '8px 12px', 
-                fontSize: '14px', 
-                fontWeight: '500', 
-                color: currentView === 'dashboard' ? '#111827' : '#6b7280', 
-                backgroundColor: currentView === 'dashboard' ? '#f3f4f6' : 'transparent', 
-                borderRadius: '8px',
-                border: 'none',
-                cursor: 'pointer',
-                width: '100%',
-                textAlign: 'left'
-              }}
-            >
-              <span>🏠</span>
-              <span>Home</span>
-            </button>
-            <button
-              onClick={() => handleNavigation('events')}
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '12px', 
-                padding: '8px 12px', 
-                fontSize: '14px', 
-                fontWeight: '500', 
-                color: currentView === 'events' ? '#111827' : '#6b7280', 
-                backgroundColor: currentView === 'events' ? '#f3f4f6' : 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                width: '100%',
-                textAlign: 'left'
-              }}
-            >
-              <span>📅</span>
-              <span>Events</span>
-            </button>
-            <button
-              onClick={() => handleNavigation('speakers')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                fontWeight: '500', 
-                color: currentView === 'speakers' ? '#111827' : '#6b7280', 
-                backgroundColor: currentView === 'speakers' ? '#f3f4f6' : 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                width: '100%',
-                textAlign: 'left'
-              }}
-            >
-              <span>🎤</span>
-              <span>Speakers</span>
-            </button>
-            <button
-              onClick={() => handleNavigation('organizations')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                fontWeight: '500', 
-                color: currentView === 'organizations' ? '#111827' : '#6b7280', 
-                backgroundColor: currentView === 'organizations' ? '#f3f4f6' : 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                width: '100%',
-                textAlign: 'left'
-              }}
-            >
-              <span>🏢</span>
-              <span>Organizations</span>
-            </button>
-            <a href="#" style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px', 
-              padding: '8px 12px', 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#6b7280', 
-              textDecoration: 'none'
-            }}>
-              <span>👥</span>
-              <span>Orders</span>
-            </a>
-            <a href="#" style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px', 
-              padding: '8px 12px', 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#6b7280', 
-              textDecoration: 'none'
-            }}>
-              <span>⚙️</span>
-              <span>Settings</span>
-            </a>
-          </div>
-        </nav>
+        <ConsistentNavigation 
+          currentPage={currentView} 
+          onNavigate={handleNavigation} 
+        />
 
         {/* Upcoming Events Section */}
         <div style={{ padding: '16px', borderTop: '1px solid #e5e7eb' }}>
@@ -1194,16 +1373,634 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
               </>
             )}
 
-            {/* Events View - Placeholder */}
+            {/* Events View */}
             {currentView === 'events' && (
+              <>
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+                  <h1 style={{ fontSize: '30px', fontWeight: 'bold', color: '#111827' }}>
+                    Events Management
+                  </h1>
+                  <button
+                    onClick={() => setShowCreateEventForm(true)}
+                    style={{
+                      backgroundColor: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '12px 24px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <span>+</span>
+                    Create Event
+                  </button>
+                </div>
+
+                {/* Error Message */}
+                {eventsError && (
+                  <div style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    color: '#DC2626',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    marginBottom: '24px'
+                  }}>
+                    {eventsError}
+                  </div>
+                )}
+
+                {/* Events List */}
+                {eventsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '48px' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      border: '4px solid #E5E7EB',
+                      borderTop: '4px solid #3B82F6',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                      margin: '0 auto 16px'
+                    }}></div>
+                    <p style={{ color: '#6B7280' }}>Loading events...</p>
+                  </div>
+                ) : events.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '48px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
+                      No events yet
+                    </h3>
+                    <p style={{ color: '#6B7280', marginBottom: '24px' }}>
+                      Create your first event to get started.
+                    </p>
+                    <button
+                      onClick={() => setShowCreateEventForm(true)}
+                      style={{
+                        backgroundColor: '#3B82F6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 24px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Create Event
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ padding: '24px' }}>
+                    <div style={{ display: 'grid', gap: '16px' }}>
+                      {events.map((event) => (
+                        <div
+                          key={event.id}
+                          style={{
+                            backgroundColor: 'white',
+                            border: '1px solid #E5E7EB',
+                            borderRadius: '12px',
+                            padding: '24px',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                            <div style={{ flex: 1 }}>
+                              <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
+                                {event.title}
+                              </h3>
+                              <p style={{ color: '#6B7280', marginBottom: '12px' }}>
+                                {event.description}
+                              </p>
+                              <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280' }}>
+                                <span>📅 {new Date(event.start_time).toLocaleDateString()}</span>
+                                <span>📍 {event.location?.name || 'Location TBD'}</span>
+                                {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
+                                {event.price && <span>💰 ${event.price / 100}</span>}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => handleEditEvent(event)}
+                                style={{
+                                  backgroundColor: '#F3F4F6',
+                                  color: '#374151',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEvent(event.id)}
+                                style={{
+                                  backgroundColor: '#FEF2F2',
+                                  color: '#DC2626',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                          {event.activities && event.activities.length > 0 && (
+                            <div>
+                              <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Activities ({event.activities.length})
+                              </h4>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                {event.activities.map((activity, index) => (
+                                  <span
+                                    key={index}
+                                    style={{
+                                      backgroundColor: '#F3F4F6',
+                                      color: '#374151',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '12px'
+                                    }}
+                                  >
+                                    {activity.title}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Users View - Placeholder */}
+            {currentView === 'users' && (
               <div style={{ textAlign: 'center', padding: '48px' }}>
-                <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', marginBottom: '16px' }}>Events</h1>
-                <p style={{ color: '#6b7280' }}>Events management will be integrated here.</p>
+                <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', marginBottom: '16px' }}>Users</h1>
+                <p style={{ color: '#6b7280' }}>Mobile app users management will be integrated here.</p>
+              </div>
+            )}
+
+            {/* Settings View - Placeholder */}
+            {currentView === 'settings' && (
+              <div style={{ textAlign: 'center', padding: '48px' }}>
+                <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', marginBottom: '16px' }}>Settings</h1>
+                <p style={{ color: '#6b7280' }}>Application settings will be integrated here.</p>
               </div>
             )}
           </div>
         </main>
       </div>
+
+      {/* Event Form Modal */}
+      {showCreateEventForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '800px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>
+                  {editingEvent ? 'Edit Event' : 'Create Event'}
+                </h2>
+                <button
+                  onClick={handleCancelEventForm}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#6B7280'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <form onSubmit={handleEventSubmit}>
+                <div style={{ display: 'grid', gap: '24px' }}>
+                  {/* Event Name */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Event Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={eventFormData.name}
+                      onChange={(e) => setEventFormData(prev => ({ ...prev, name: e.target.value }))}
+                      required={!editingEvent}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '8px',
+                        fontSize: '14px'
+                      }}
+                    />
+                  </div>
+
+                  {/* Event Description */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Description *
+                    </label>
+                    <textarea
+                      value={eventFormData.description}
+                      onChange={(e) => setEventFormData(prev => ({ ...prev, description: e.target.value }))}
+                      required={!editingEvent}
+                      rows={4}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {/* Event Cover Image */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Event Cover Image
+                    </label>
+                    {imagePreview && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          style={{ width: '200px', height: '120px', objectFit: 'cover', borderRadius: '8px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          style={{
+                            backgroundColor: '#FEF2F2',
+                            color: '#DC2626',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            marginLeft: '8px'
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        backgroundColor: '#F3F4F6',
+                        color: '#374151',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        marginRight: '8px'
+                      }}
+                    >
+                      📷 Select Image
+                    </button>
+                    {imageFile && (
+                      <button
+                        type="button"
+                        onClick={handleUploadImage}
+                        disabled={uploadingImage}
+                        style={{
+                          backgroundColor: uploadingImage ? '#9CA3AF' : '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '12px 16px',
+                          fontSize: '14px',
+                          cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        {uploadingImage ? (
+                          <>
+                            <div style={{ width: '16px', height: '16px', border: '2px solid #ffffff', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            📷 Upload Image
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Date and Time */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                        Start Date *
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={eventFormData.startDate}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                        required={!editingEvent}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                        End Date *
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={eventFormData.endDate}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, endDate: e.target.value }))}
+                        required={!editingEvent}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Location
+                    </label>
+                    <LocationPicker
+                      value={eventFormData.location}
+                      onChange={(location) => setEventFormData(prev => ({ ...prev, location }))}
+                      placeholder="Search for a location..."
+                    />
+                  </div>
+
+                  {/* Capacity and Price */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                        Capacity
+                      </label>
+                      <input
+                        type="number"
+                        value={eventFormData.capacity}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, capacity: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                        Price ($)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={eventFormData.price}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, price: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Activities */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                        Activities
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addActivity}
+                        style={{
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Add Activity
+                      </button>
+                    </div>
+                    {activities.map((activity, index) => (
+                      <div key={index} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+                            Activity {index + 1}
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => removeActivity(index)}
+                            style={{
+                              backgroundColor: '#FEF2F2',
+                              color: '#DC2626',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div style={{ display: 'grid', gap: '12px' }}>
+                          <input
+                            type="text"
+                            placeholder="Activity name"
+                            value={activity.name}
+                            onChange={(e) => updateActivity(index, 'name', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #D1D5DB',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          />
+                          <textarea
+                            placeholder="Activity description"
+                            value={activity.description}
+                            onChange={(e) => updateActivity(index, 'description', e.target.value)}
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #D1D5DB',
+                              borderRadius: '6px',
+                              fontSize: '14px',
+                              resize: 'vertical'
+                            }}
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <input
+                              type="datetime-local"
+                              placeholder="Start time"
+                              value={activity.startTime}
+                              onChange={(e) => updateActivity(index, 'startTime', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #D1D5DB',
+                                borderRadius: '6px',
+                                fontSize: '14px'
+                              }}
+                            />
+                            <input
+                              type="datetime-local"
+                              placeholder="End time"
+                              value={activity.endTime}
+                              onChange={(e) => updateActivity(index, 'endTime', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #D1D5DB',
+                                borderRadius: '6px',
+                                fontSize: '14px'
+                              }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Location"
+                            value={activity.location}
+                            onChange={(e) => updateActivity(index, 'location', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #D1D5DB',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          />
+                          <select
+                            value={activity.category}
+                            onChange={(e) => updateActivity(index, 'category', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #D1D5DB',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          >
+                            {ACTIVITY_CATEGORIES.map(category => (
+                              <option key={category.id} value={category.id}>
+                                {category.icon} {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Form Actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
+                  <button
+                    type="button"
+                    onClick={handleCancelEventForm}
+                    style={{
+                      backgroundColor: '#F3F4F6',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '12px 24px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={eventsLoading}
+                    style={{
+                      backgroundColor: eventsLoading ? '#9CA3AF' : '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '12px 24px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: eventsLoading ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {editingEvent ? 'Update Event' : 'Create Event'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

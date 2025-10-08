@@ -428,4 +428,136 @@ export class OrganizationsService {
 
     console.log('✅ Organization unassigned from event');
   }
+
+  // Get organization's assigned activities
+  static async getOrganizationActivities(organizationId: string): Promise<string[]> {
+    console.log('Getting organization activities:', { organizationId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_organizations?organization_id=eq.${organizationId}&select=activity_id`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error getting organization activities:', errorText);
+      throw new Error(`Failed to get organization activities: ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Get organization activities response text:', responseText);
+    
+    if (!responseText.trim()) {
+      console.log('✅ No activities found for organization (empty response)');
+      return [];
+    }
+    
+    const activityData = JSON.parse(responseText);
+    const activityIds = activityData.map((item: any) => item.activity_id);
+    
+    console.log('✅ Retrieved organization activities:', activityIds);
+    return activityIds;
+  }
+
+  // Assign organization to activity
+  static async assignOrganizationToActivity(organizationId: string, activityId: string): Promise<void> {
+    console.log('Assigning organization to activity:', { organizationId, activityId });
+    
+    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_organizations`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        organization_id: organizationId,
+        activity_id: activityId,
+        role: 'sponsor',
+        display_order: 0,
+        is_confirmed: true,
+        is_public: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error assigning organization to activity:', errorText);
+      throw new Error(`Failed to assign organization to activity: ${errorText}`);
+    }
+
+    console.log('✅ Organization assigned to activity');
+  }
+
+  // Unassign organization from activity
+  static async unassignOrganizationFromActivity(organizationId: string, activityId: string): Promise<void> {
+    console.log('Unassigning organization from activity:', { organizationId, activityId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_organizations?organization_id=eq.${organizationId}&activity_id=eq.${activityId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error unassigning organization from activity:', errorText);
+      throw new Error(`Failed to unassign organization from activity: ${errorText}`);
+    }
+
+    console.log('✅ Organization unassigned from activity');
+  }
+
+  // Bulk assign organization to multiple activities
+  static async assignOrganizationToActivities(organizationId: string, activityIds: string[]): Promise<void> {
+    console.log('Bulk assigning organization to activities:', { organizationId, activityIds });
+    
+    // First, remove existing assignments for this organization
+    await this.unassignOrganizationFromAllActivities(organizationId);
+    
+    // Then assign to new activities
+    const assignments = activityIds.map(activityId => ({
+      organization_id: organizationId,
+      activity_id: activityId,
+      role: 'sponsor',
+      display_order: 0,
+      is_confirmed: true,
+      is_public: true,
+    }));
+
+    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_organizations`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(assignments),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error bulk assigning organization to activities:', errorText);
+      throw new Error(`Failed to bulk assign organization to activities: ${errorText}`);
+    }
+
+    console.log('✅ Organization bulk assigned to activities');
+  }
+
+  // Unassign organization from all activities
+  static async unassignOrganizationFromAllActivities(organizationId: string): Promise<void> {
+    console.log('Unassigning organization from all activities:', { organizationId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_organizations?organization_id=eq.${organizationId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error unassigning organization from all activities:', errorText);
+      throw new Error(`Failed to unassign organization from all activities: ${errorText}`);
+    }
+
+    console.log('✅ Organization unassigned from all activities');
+  }
 }
