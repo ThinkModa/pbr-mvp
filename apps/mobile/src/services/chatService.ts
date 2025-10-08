@@ -213,7 +213,24 @@ export class ChatService {
       throw new Error(`Failed to send message: ${errorText}`);
     }
 
-    const message = await response.json();
+    const responseText = await response.text();
+    console.log('Message sending response text:', responseText);
+    
+    let message;
+    if (responseText.trim() === '') {
+      // Empty response is normal for successful POST operations in Supabase
+      console.log('Empty response received, fetching sent message...');
+      message = await this.fetchMostRecentMessage(threadId);
+    } else {
+      try {
+        message = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        console.error('Response text was:', responseText);
+        throw new Error(`Invalid JSON response: ${responseText}`);
+      }
+    }
+    
     console.log('✅ Message sent:', message.id);
     
     // Update thread's last_message_at
@@ -332,13 +349,35 @@ export class ChatService {
       }
     );
 
+    console.log('Direct message thread creation response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error creating direct message thread:', errorText);
-      throw new Error(`Failed to create direct message thread: ${errorText}`);
+      console.error('Direct message thread creation failed:', errorText);
+      throw new Error(`Failed to create direct message thread: ${response.status} ${errorText}`);
     }
 
-    const thread = await response.json();
+    const responseText = await response.text();
+    console.log('Direct message thread creation response text:', responseText);
+    
+    let thread;
+    if (responseText.trim() === '') {
+      // Empty response is normal for successful POST operations in Supabase
+      console.log('Empty response received, fetching created thread...');
+      thread = await this.fetchMostRecentThread(userId1);
+    } else {
+      try {
+        thread = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        console.error('Response text was:', responseText);
+        throw new Error(`Invalid JSON response: ${responseText}`);
+      }
+    }
     console.log('✅ Created direct message thread:', thread.id);
     
     // Add both users to the thread
@@ -350,6 +389,155 @@ export class ChatService {
     // Enrich and return the thread
     const enrichedThread = await this.enrichThread(thread, userId1);
     return enrichedThread;
+  }
+
+  // Create a new group chat thread
+  static async createGroupChatThread(creatorId: string, userIds: string[], threadName?: string): Promise<ChatThread> {
+    console.log('Creating group chat thread:', { creatorId, userIds, threadName });
+    console.log('Using Supabase URL:', this.SUPABASE_URL);
+    console.log('Using API Key:', this.SUPABASE_ANON_KEY ? 'Present' : 'Missing');
+    
+    // Create new thread
+    const threadData = {
+      type: 'group',
+      name: threadName || `Group Chat`,
+      is_private: false,
+      allow_member_invites: true,
+      allow_file_uploads: true,
+    };
+    
+    console.log('Sending thread data:', threadData);
+
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/chat_threads`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(threadData),
+      }
+    );
+
+    console.log('Group chat thread creation response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Group chat thread creation failed:', errorText);
+      throw new Error(`Failed to create group chat thread: ${response.status} ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Group chat thread creation response text:', responseText);
+    
+    let thread;
+    if (responseText.trim() === '') {
+      // Empty response is normal for successful POST operations in Supabase
+      // We need to fetch the created thread separately
+      console.log('Empty response received, fetching created thread...');
+      thread = await this.fetchMostRecentThread(creatorId);
+    } else {
+      try {
+        thread = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        console.error('Response text was:', responseText);
+        throw new Error(`Invalid JSON response: ${responseText}`);
+      }
+    }
+    console.log('Created group chat thread:', thread);
+
+    // Add all users to the thread
+    const allUserIds = [creatorId, ...userIds];
+    for (const userId of allUserIds) {
+      await this.addUserToThread(thread.id, userId, userId === creatorId ? 'admin' : 'member');
+    }
+
+    // Enrich and return the thread
+    const enrichedThread = await this.enrichThread(thread, creatorId);
+    return enrichedThread;
+  }
+
+  // Helper method to fetch the most recently created thread for a user
+  private static async fetchMostRecentThread(userId: string): Promise<any> {
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/chat_threads?select=*&order=created_at.desc&limit=1`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch recent thread: ${response.status} ${errorText}`);
+    }
+
+    const threads = await response.json();
+    if (threads.length === 0) {
+      throw new Error('No recent thread found');
+    }
+
+    return threads[0];
+  }
+
+  // Helper method to fetch the most recently sent message in a thread
+  private static async fetchMostRecentMessage(threadId: string): Promise<any> {
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/chat_messages?select=*&thread_id=eq.${threadId}&order=created_at.desc&limit=1`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch recent message: ${response.status} ${errorText}`);
+    }
+
+    const messages = await response.json();
+    if (messages.length === 0) {
+      throw new Error('No recent message found');
+    }
+
+    return messages[0];
+  }
+
+  // Helper method to add user to thread
+  private static async addUserToThread(threadId: string, userId: string, role: string = 'member'): Promise<void> {
+    const membershipData = {
+      thread_id: threadId,
+      user_id: userId,
+      role: role,
+      notifications_enabled: true,
+      is_active: true,
+      unread_count: 0,
+    };
+
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/chat_memberships`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(membershipData),
+      }
+    );
+
+    console.log('Add user to thread response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Add user to thread failed:', errorText);
+      throw new Error(`Failed to add user to thread: ${response.status} ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Add user to thread response text:', responseText);
   }
 
   // Helper method to find existing direct message thread

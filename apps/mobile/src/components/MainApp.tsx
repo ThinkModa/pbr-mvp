@@ -13,6 +13,8 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/MockAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
@@ -20,6 +22,9 @@ import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
+import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
+import { RealTimeService } from '../services/realTimeService';
+import { NotificationService } from '../services/notificationService';
 import EventModal from './EventModal';
 import ActivityModal from './ActivityModal';
 import SpeakerModal from './SpeakerModal';
@@ -1725,58 +1730,466 @@ const ProfileScreen: React.FC = () => {
 };
 
 // Chat Screen
-const ChatScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('all');
-  const [message, setMessage] = useState('');
+const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct'>('notifications');
+  const [groupFilter, setGroupFilter] = useState<'events' | 'users'>('events');
+  const [threads, setThreads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showUserSelectionModal, setShowUserSelectionModal] = useState(false);
+  const [selectedChatType, setSelectedChatType] = useState<'group' | 'direct' | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [creatingThread, setCreatingThread] = useState(false);
+  
+  // Name Chat State
+  const [chatName, setChatName] = useState('');
+  
+  // User Selection Modal Flow State
+  const [userSelectionStep, setUserSelectionStep] = useState<'select' | 'name'>('select');
 
-  const chats = [
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      title: 'Property Buyer',
-      lastMessage: 'Thanks for showing me the property yesterday!',
-      time: '2 min ago',
-      unread: 2,
-      avatar: 'https://via.placeholder.com/50x50',
-    },
-    {
-      id: '2',
-      name: 'Mike Chen',
-      title: 'Investment Partner',
-      lastMessage: 'Let\'s discuss the downtown property deal',
-      time: '1 hour ago',
-      unread: 0,
-      avatar: 'https://via.placeholder.com/50x50',
-    },
-    {
-      id: '3',
-      name: 'Lisa Rodriguez',
-      title: 'Property Seller',
-      lastMessage: 'The inspection went well, when can we close?',
-      time: '3 hours ago',
-      unread: 1,
-      avatar: 'https://via.placeholder.com/50x50',
-    },
-  ];
+  // Load threads when tab changes
+  useEffect(() => {
+    if (user) {
+      loadThreads();
+    }
+  }, [activeTab, groupFilter, user]);
 
-  const renderChat = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.chatItem}>
-      <Image source={{ uri: item.avatar }} style={styles.chatAvatar} />
-      <View style={styles.chatContent}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatName}>{item.name}</Text>
-          <Text style={styles.chatTime}>{item.time}</Text>
-        </View>
-        <Text style={styles.chatTitle}>{item.title}</Text>
-        <Text style={styles.chatMessage}>{item.lastMessage}</Text>
+  const loadThreads = async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      let threadsData: any[] = [];
+      
+      if (activeTab === 'notifications') {
+        // Load notification threads (event threads that are read-only)
+        threadsData = await ChatService.getUserThreads(user.id, 'announcements');
+      } else if (activeTab === 'group') {
+        // Load group chat threads
+        threadsData = await ChatService.getUserThreads(user.id, 'group');
+        
+        // Filter by events vs users
+        if (groupFilter === 'events') {
+          threadsData = threadsData.filter(thread => thread.eventId);
+        } else {
+          threadsData = threadsData.filter(thread => !thread.eventId);
+        }
+      } else if (activeTab === 'direct') {
+        // Load direct message threads
+        threadsData = await ChatService.getUserThreads(user.id, 'direct');
+      }
+      
+      setThreads(threadsData);
+      console.log(`✅ Loaded ${threadsData.length} ${activeTab} threads`);
+    } catch (err) {
+      console.error('Error loading threads:', err);
+      setError('Failed to load chats. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTimeAgo = (dateString: string | null): string => {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays}d ago`;
+  };
+
+  const getDisplayName = (thread: any): string => {
+    if (activeTab === 'notifications' && thread.event) {
+      return thread.event.title;
+    } else if (activeTab === 'direct' && thread.otherUser) {
+      return thread.otherUser.name;
+    } else if (thread.name) {
+      return thread.name;
+    }
+    return 'Unnamed Chat';
+  };
+
+  const getDisplaySubtitle = (thread: any): string => {
+    if (activeTab === 'notifications' && thread.event) {
+      return new Date(thread.event.start_time).toLocaleDateString();
+    } else if (activeTab === 'direct' && thread.otherUser) {
+      return thread.otherUser.email;
+    } else if (thread.description) {
+      return thread.description;
+    }
+    return '';
+  };
+
+  const getDisplayMessage = (thread: any): string => {
+    if (thread.lastMessage) {
+      return thread.lastMessage.content;
+    }
+    return 'No messages yet';
+  };
+
+  const getAvatarSource = (thread: any): { uri: string } | number => {
+    if (activeTab === 'direct' && thread.otherUser?.profile_image_url) {
+      return { uri: thread.otherUser.profile_image_url };
+    } else if (activeTab === 'notifications' && thread.event?.cover_image_url) {
+      return { uri: thread.event.cover_image_url };
+    }
+    // Default avatar
+    return { uri: 'https://via.placeholder.com/50x50' };
+  };
+
+  const handleThreadPress = (thread: any) => {
+    // Navigate to chat thread screen
+    setCurrentScreen(`chat-thread-${thread.id}`);
+  };
+
+  const handleNewChat = () => {
+    setShowNewChatModal(true);
+  };
+
+
+  const handleStartGroupChat = () => {
+    setSelectedChatType('group');
+    setShowNewChatModal(false);
+    loadAvailableUsers();
+    setShowUserSelectionModal(true);
+  };
+
+  const handleCreateDirectMessage = () => {
+    setSelectedChatType('direct');
+    setShowNewChatModal(false);
+    loadAvailableUsers();
+    setShowUserSelectionModal(true);
+  };
+
+  const loadAvailableUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      // Fetch all users except the current user
+      const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/users?select=id,name,email,avatar_url&id=neq.${user?.id}`, {
+        headers: {
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+        },
+      });
+      
+      if (response.ok) {
+        const users = await response.json();
+        setAvailableUsers(users);
+      } else {
+        console.error('Failed to load users:', response.statusText);
+        setAvailableUsers([]);
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setAvailableUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleUserSelection = (userId: string) => {
+    if (selectedChatType === 'direct') {
+      // For direct messages, only allow one selection
+      setSelectedUsers([userId]);
+    } else {
+      // For group chats, allow multiple selections
+      setSelectedUsers(prev => 
+        prev.includes(userId) 
+          ? prev.filter(id => id !== userId)
+          : [...prev, userId]
+      );
+    }
+  };
+
+  const handleStartChat = async () => {
+    if (selectedUsers.length === 0) {
+      Alert.alert('No Users Selected', 'Please select at least one user to start a chat.');
+      return;
+    }
+
+    if (selectedChatType === 'direct' && selectedUsers.length > 1) {
+      Alert.alert('Invalid Selection', 'Direct messages can only be created with one other user.');
+      return;
+    }
+
+    if (selectedChatType === 'group' && selectedUsers.length < 2) {
+      Alert.alert('Invalid Selection', 'Group chats require at least 2 other users.');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to start a chat.');
+      return;
+    }
+
+    if (selectedChatType === 'group') {
+      // For group chats, go to name chat step within the same modal
+      setUserSelectionStep('name');
+      return;
+    }
+
+    // For direct messages, create immediately
+    setCreatingThread(true);
+    
+    try {
+      const newThread = await ChatService.createDirectMessageThread(user.id, selectedUsers[0]);
+      console.log('Created new thread:', newThread);
+
+      // Reset state
+      setShowUserSelectionModal(false);
+      setSelectedChatType(null);
+      setSelectedUsers([]);
+      setAvailableUsers([]);
+
+      // Navigate to the new chat thread
+      setCurrentScreen(`chat-thread-${newThread.id}`);
+      
+      // Refresh the threads list to show the new thread
+      loadThreads();
+
+    } catch (error) {
+      console.error('Error creating chat thread:', error);
+      Alert.alert('Error', 'Failed to create chat. Please try again.');
+    } finally {
+      setCreatingThread(false);
+    }
+  };
+
+  const handleCancelUserSelection = () => {
+    setShowUserSelectionModal(false);
+    setUserSelectionStep('select');
+    setSelectedChatType(null);
+    setSelectedUsers([]);
+    setAvailableUsers([]);
+    setChatName('');
+  };
+
+  const handleCreateGroupChat = async () => {
+    if (!chatName.trim()) {
+      Alert.alert('Chat Name Required', 'Please enter a name for your group chat.');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to start a chat.');
+      return;
+    }
+
+    setCreatingThread(true);
+    
+    try {
+      // Create group chat thread with custom name
+      const newThread = await ChatService.createGroupChatThread(user.id, selectedUsers, chatName.trim());
+      console.log('Created new thread:', newThread);
+
+      // Reset state
+      setShowUserSelectionModal(false);
+      setUserSelectionStep('select');
+      setSelectedChatType(null);
+      setSelectedUsers([]);
+      setAvailableUsers([]);
+      setChatName('');
+
+      // Navigate to the new chat thread
+      setCurrentScreen(`chat-thread-${newThread.id}`);
+      
+      // Refresh the threads list to show the new thread
+      loadThreads();
+
+    } catch (error) {
+      console.error('Error creating group chat:', error);
+      Alert.alert('Error', 'Failed to create group chat. Please try again.');
+    } finally {
+      setCreatingThread(false);
+    }
+  };
+
+  const handleCancelNameChat = () => {
+    setUserSelectionStep('select');
+    setChatName('');
+    setCreatingThread(false);
+  };
+
+  const renderThread = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.chatItem}
+      onPress={() => handleThreadPress(item)}
+    >
+      <View style={styles.chatMainContent}>
+        <Text style={styles.chatName} numberOfLines={1} ellipsizeMode="tail">{getDisplayName(item)}</Text>
+        <Text style={styles.chatTitle} numberOfLines={1} ellipsizeMode="tail">{getDisplaySubtitle(item)}</Text>
+        <Text style={styles.chatMessage} numberOfLines={2} ellipsizeMode="tail">{getDisplayMessage(item)}</Text>
       </View>
-      {item.unread > 0 && (
-        <View style={styles.unreadBadge}>
-          <Text style={styles.unreadText}>{item.unread}</Text>
-        </View>
-      )}
+      <View style={styles.chatRightContent}>
+        {item.unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>{item.unreadCount}</Text>
+          </View>
+        )}
+        <Text style={styles.chatTime}>{formatTimeAgo(item.lastMessageAt)}</Text>
+      </View>
     </TouchableOpacity>
   );
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>
+        {activeTab === 'notifications' && 'No notifications yet'}
+        {activeTab === 'group' && 'No group chats yet'}
+        {activeTab === 'direct' && 'No direct messages yet'}
+      </Text>
+      <Text style={styles.emptySubtext}>
+        {activeTab === 'notifications' && 'Event notifications will appear here'}
+        {activeTab === 'group' && 'Join group chats to start conversations'}
+        {activeTab === 'direct' && 'Start a conversation with another user'}
+      </Text>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Messages</Text>
+        </View>
+
+        {/* Chat Tabs */}
+        <View style={styles.chatTabs}>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'announcements' && styles.activeChatTab]}
+            onPress={() => setActiveTab('announcements')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'announcements' && styles.activeChatTabText]}>
+              Announcements
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'group' && styles.activeChatTab]}
+            onPress={() => setActiveTab('group')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'group' && styles.activeChatTabText]}>
+              Group Chats
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'direct' && styles.activeChatTab]}
+            onPress={() => setActiveTab('direct')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'direct' && styles.activeChatTabText]}>
+              Direct
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Group Chat Filters */}
+        {activeTab === 'group' && (
+          <View style={styles.groupFilters}>
+            <TouchableOpacity
+              style={[styles.filterButton, groupFilter === 'events' && styles.activeFilterButton]}
+              onPress={() => setGroupFilter('events')}
+            >
+              <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
+                Events
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, groupFilter === 'users' && styles.activeFilterButton]}
+              onPress={() => setGroupFilter('users')}
+            >
+              <Text style={[styles.filterButtonText, groupFilter === 'users' && styles.activeFilterButtonText]}>
+                Groups
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading chats...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Messages</Text>
+        </View>
+
+        {/* Chat Tabs */}
+        <View style={styles.chatTabs}>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'announcements' && styles.activeChatTab]}
+            onPress={() => setActiveTab('announcements')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'announcements' && styles.activeChatTabText]}>
+              Announcements
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'group' && styles.activeChatTab]}
+            onPress={() => setActiveTab('group')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'group' && styles.activeChatTabText]}>
+              Group Chats
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chatTab, activeTab === 'direct' && styles.activeChatTab]}
+            onPress={() => setActiveTab('direct')}
+          >
+            <Text style={[styles.chatTabText, activeTab === 'direct' && styles.activeChatTabText]}>
+              Direct
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Group Chat Filters */}
+        {activeTab === 'group' && (
+          <View style={styles.groupFilters}>
+            <TouchableOpacity
+              style={[styles.filterButton, groupFilter === 'events' && styles.activeFilterButton]}
+              onPress={() => setGroupFilter('events')}
+            >
+              <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
+                Events
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, groupFilter === 'users' && styles.activeFilterButton]}
+              onPress={() => setGroupFilter('users')}
+            >
+              <Text style={[styles.filterButtonText, groupFilter === 'users' && styles.activeFilterButtonText]}>
+                Groups
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadThreads}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1790,32 +2203,735 @@ const ChatScreen: React.FC = () => {
       {/* Chat Tabs */}
       <View style={styles.chatTabs}>
         <TouchableOpacity
-          style={[styles.chatTab, activeTab === 'all' && styles.activeChatTab]}
-          onPress={() => setActiveTab('all')}
+          style={[styles.chatTab, activeTab === 'notifications' && styles.activeChatTab]}
+          onPress={() => setActiveTab('notifications')}
         >
-          <Text style={[styles.chatTabText, activeTab === 'all' && styles.activeChatTabText]}>All</Text>
+          <Text style={[styles.chatTabText, activeTab === 'notifications' && styles.activeChatTabText]}>
+            Notifications
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.chatTab, activeTab === 'buyers' && styles.activeChatTab]}
-          onPress={() => setActiveTab('buyers')}
+          style={[styles.chatTab, activeTab === 'group' && styles.activeChatTab]}
+          onPress={() => setActiveTab('group')}
         >
-          <Text style={[styles.chatTabText, activeTab === 'buyers' && styles.activeChatTabText]}>Buyers</Text>
+          <Text style={[styles.chatTabText, activeTab === 'group' && styles.activeChatTabText]}>
+            Group Chats
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.chatTab, activeTab === 'sellers' && styles.activeChatTab]}
-          onPress={() => setActiveTab('sellers')}
+          style={[styles.chatTab, activeTab === 'direct' && styles.activeChatTab]}
+          onPress={() => setActiveTab('direct')}
         >
-          <Text style={[styles.chatTabText, activeTab === 'sellers' && styles.activeChatTabText]}>Sellers</Text>
+          <Text style={[styles.chatTabText, activeTab === 'direct' && styles.activeChatTabText]}>
+            Direct
+          </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Group Chat Filters */}
+      {activeTab === 'group' && (
+        <View style={styles.groupFilters}>
+          <TouchableOpacity
+            style={[styles.filterButton, groupFilter === 'events' && styles.activeFilterButton]}
+            onPress={() => setGroupFilter('events')}
+          >
+            <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
+              Events
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, groupFilter === 'users' && styles.activeFilterButton]}
+            onPress={() => setGroupFilter('users')}
+          >
+            <Text style={[styles.filterButtonText, groupFilter === 'users' && styles.activeFilterButtonText]}>
+              Groups
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <FlatList
-        data={chats}
-        renderItem={renderChat}
+        data={threads}
+        renderItem={renderThread}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatsList}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmptyState}
       />
+
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={styles.floatingActionButton}
+        onPress={handleNewChat}
+      >
+        <Text style={styles.floatingActionButtonText}>+</Text>
+      </TouchableOpacity>
+
+      {/* New Chat Modal */}
+      <Modal
+        visible={showNewChatModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowNewChatModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.newChatModal}>
+            <Text style={styles.newChatModalTitle}>Start New Chat</Text>
+            <Text style={styles.newChatModalSubtitle}>Choose the type of conversation you'd like to start</Text>
+            
+            <TouchableOpacity
+              style={styles.newChatOption}
+              onPress={handleStartGroupChat}
+            >
+              <Text style={styles.newChatOptionIcon}>👥</Text>
+              <View style={styles.newChatOptionContent}>
+                <Text style={styles.newChatOptionTitle}>Group Chat</Text>
+                <Text style={styles.newChatOptionDescription}>Create a group conversation with multiple people</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.newChatOption}
+              onPress={handleCreateDirectMessage}
+            >
+              <Text style={styles.newChatOptionIcon}>💬</Text>
+              <View style={styles.newChatOptionContent}>
+                <Text style={styles.newChatOptionTitle}>Direct Message</Text>
+                <Text style={styles.newChatOptionDescription}>Start a private conversation with someone</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.newChatCancelButton}
+              onPress={() => setShowNewChatModal(false)}
+            >
+              <Text style={styles.newChatCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* User Selection Modal */}
+      <Modal
+        visible={showUserSelectionModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCancelUserSelection}
+      >
+        <SafeAreaView style={styles.userSelectionModal}>
+          {userSelectionStep === 'select' ? (
+            <>
+              <View style={styles.userSelectionHeader}>
+                <Text style={styles.userSelectionTitle}>
+                  {selectedChatType === 'group' ? 'Select Users for Group Chat' : 'Select User for Direct Message'}
+                </Text>
+                <TouchableOpacity onPress={handleCancelUserSelection}>
+                  <Text style={styles.userSelectionCancelButton}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              {loadingUsers ? (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Loading users...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={availableUsers}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[
+                        styles.userItem,
+                        selectedUsers.includes(item.id) && styles.selectedUserItem
+                      ]}
+                      onPress={() => handleUserSelection(item.id)}
+                    >
+                      <View style={styles.userAvatar}>
+                        <Text style={styles.userAvatarText}>
+                          {item.name ? item.name.charAt(0).toUpperCase() : '?'}
+                        </Text>
+                      </View>
+                      <View style={styles.userInfo}>
+                        <Text style={styles.userName}>{item.name || 'Unknown User'}</Text>
+                        <Text style={styles.userEmail}>{item.email}</Text>
+                      </View>
+                      {selectedUsers.includes(item.id) && (
+                        <View style={styles.selectedIndicator}>
+                          <Text style={styles.selectedIndicatorText}>✓</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  style={styles.usersList}
+                />
+              )}
+
+              <View style={styles.userSelectionFooter}>
+                <TouchableOpacity
+                  style={[
+                    styles.startChatButton,
+                    (selectedUsers.length === 0 || creatingThread) && styles.startChatButtonDisabled
+                  ]}
+                  onPress={handleStartChat}
+                  disabled={selectedUsers.length === 0 || creatingThread}
+                >
+                  <Text style={[
+                    styles.startChatButtonText,
+                    (selectedUsers.length === 0 || creatingThread) && styles.startChatButtonTextDisabled
+                  ]}>
+                    {creatingThread 
+                      ? 'Creating...' 
+                      : selectedChatType === 'group' 
+                        ? 'Next' 
+                        : 'Start Message'
+                    }
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.userSelectionHeader}>
+                <Text style={styles.userSelectionTitle}>Name Chat</Text>
+                <TouchableOpacity onPress={handleCancelNameChat}>
+                  <Text style={styles.userSelectionCancelButton}>Back</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.nameChatContent}>
+                <Text style={styles.nameChatSubtitle}>
+                  Give your group chat a name
+                </Text>
+                
+                <TextInput
+                  style={styles.nameChatInput}
+                  placeholder="Enter chat name..."
+                  value={chatName}
+                  onChangeText={setChatName}
+                  maxLength={50}
+                  autoFocus
+                />
+                
+                <Text style={styles.nameChatHint}>
+                  {chatName.length}/50 characters
+                </Text>
+              </View>
+
+              <View style={styles.userSelectionFooter}>
+                <TouchableOpacity
+                  style={[
+                    styles.startChatButton,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonDisabled
+                  ]}
+                  onPress={handleCreateGroupChat}
+                  disabled={!chatName.trim() || creatingThread}
+                >
+                  <Text style={[
+                    styles.startChatButtonText,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonTextDisabled
+                  ]}>
+                    {creatingThread ? 'Creating...' : 'Start Group Chat'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+    </SafeAreaView>
+  );
+};
+
+// Chat Thread Screen
+const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: string) => void }> = ({ 
+  threadId, 
+  setCurrentScreen 
+}) => {
+  const { user } = useAuth();
+  const [thread, setThread] = useState<ChatThread | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Members Modal State
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [threadMembers, setThreadMembers] = useState<any[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  
+  // Add Members Modal State
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [availableUsersForAdd, setAvailableUsersForAdd] = useState<any[]>([]);
+  const [selectedUsersForAdd, setSelectedUsersForAdd] = useState<string[]>([]);
+  const [loadingUsersForAdd, setLoadingUsersForAdd] = useState(false);
+  const [addingMembers, setAddingMembers] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      loadThreadData();
+      loadMessages();
+      startRealTimeUpdates();
+    }
+
+    return () => {
+      // Clean up real-time listeners
+      RealTimeService.stopListeningToThread(threadId);
+    };
+  }, [threadId, user]);
+
+  // Load members when members modal is opened
+  useEffect(() => {
+    if (showMembersModal && thread?.type === 'group') {
+      loadThreadMembers();
+    }
+  }, [showMembersModal, thread]);
+
+  const loadThreadData = async () => {
+    try {
+      const threads = await ChatService.getUserThreads(user!.id);
+      const currentThread = threads.find(t => t.id === threadId);
+      setThread(currentThread || null);
+    } catch (err) {
+      console.error('Error loading thread data:', err);
+      setError('Failed to load chat thread');
+    }
+  };
+
+  const loadMessages = async () => {
+    try {
+      setLoading(true);
+      const messagesData = await ChatService.getThreadMessages(threadId);
+      setMessages(messagesData);
+      
+      // Mark messages as read
+      if (user) {
+        await ChatService.markMessagesAsRead(threadId, user.id);
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      setError('Failed to load messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startRealTimeUpdates = () => {
+    if (!user) return;
+
+    // Start listening for new messages
+    RealTimeService.startListeningToThread(threadId, user.id);
+
+    // Subscribe to new messages
+    const unsubscribeMessages = RealTimeService.subscribeToMessages(threadId, (newMessage) => {
+      setMessages(prev => [...prev, newMessage]);
+      
+      // Mark as read if user is viewing the thread
+      ChatService.markMessagesAsRead(threadId, user.id);
+    });
+
+    // Subscribe to thread updates
+    const unsubscribeThread = RealTimeService.subscribeToThreadUpdates(threadId, (update) => {
+      setThread(prev => prev ? { ...prev, unreadCount: update.unreadCount } : null);
+    });
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeThread();
+    };
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !user || sending) return;
+
+    try {
+      setSending(true);
+      const message = await ChatService.sendMessage(threadId, user.id, newMessage.trim());
+      setMessages(prev => [...prev, message]);
+      setNewMessage('');
+    } catch (err) {
+      console.error('Error sending message:', err);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const formatTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getThreadTitle = (): string => {
+    if (!thread) return 'Chat';
+    
+    if (thread.type === 'dm' && thread.otherUser) {
+      return thread.otherUser.name;
+    } else if (thread.type === 'event' && thread.event) {
+      return thread.event.title;
+    } else if (thread.name) {
+      return thread.name;
+    }
+    
+    return 'Chat';
+  };
+
+  const loadThreadMembers = async () => {
+    if (!thread || thread.type !== 'group') return;
+    
+    setLoadingMembers(true);
+    try {
+      // Get members from chat_memberships table
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/chat_memberships?select=*,users(*)&thread_id=eq.${threadId}&is_active=eq.true`,
+        {
+          headers: {
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const members = await response.json();
+        setThreadMembers(members);
+      }
+    } catch (err) {
+      console.error('Error loading thread members:', err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const loadAvailableUsersForAdd = async () => {
+    setLoadingUsersForAdd(true);
+    try {
+      // Get all users except current members
+      const currentMemberIds = threadMembers.map(member => member.user_id);
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/users?select=id,name,email&id=not.in.(${currentMemberIds.join(',')})`,
+        {
+          headers: {
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const users = await response.json();
+        setAvailableUsersForAdd(users);
+      }
+    } catch (err) {
+      console.error('Error loading available users:', err);
+    } finally {
+      setLoadingUsersForAdd(false);
+    }
+  };
+
+  const handleAddMembers = () => {
+    setShowMembersModal(false);
+    setShowAddMembersModal(true);
+    loadAvailableUsersForAdd();
+  };
+
+  const handleUserSelectionForAdd = (userId: string) => {
+    setSelectedUsersForAdd(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleAddSelectedMembers = async () => {
+    if (selectedUsersForAdd.length === 0) {
+      Alert.alert('No Users Selected', 'Please select at least one user to add.');
+      return;
+    }
+
+    setAddingMembers(true);
+    try {
+      // Add each selected user to the thread
+      for (const userId of selectedUsersForAdd) {
+        await ChatService.joinThread(threadId, userId);
+      }
+
+      // Refresh members list
+      await loadThreadMembers();
+      
+      // Reset state and close modals
+      setShowAddMembersModal(false);
+      setSelectedUsersForAdd([]);
+      setAvailableUsersForAdd([]);
+      setShowMembersModal(true);
+
+      Alert.alert('Success', `Added ${selectedUsersForAdd.length} member(s) to the group.`);
+    } catch (error) {
+      console.error('Error adding members:', error);
+      Alert.alert('Error', 'Failed to add members. Please try again.');
+    } finally {
+      setAddingMembers(false);
+    }
+  };
+
+  const handleCancelAddMembers = () => {
+    setShowAddMembersModal(false);
+    setSelectedUsersForAdd([]);
+    setAvailableUsersForAdd([]);
+    setShowMembersModal(true);
+  };
+
+  const renderMessage = ({ item }: { item: ChatMessage }) => {
+    const isOwnMessage = item.userId === user?.id;
+    
+    return (
+      <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
+        {!isOwnMessage && (
+          <Image 
+            source={{ uri: item.user?.profile_image_url || 'https://via.placeholder.com/30x30' }} 
+            style={styles.messageAvatar} 
+          />
+        )}
+        <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
+          {!isOwnMessage && (
+            <Text style={styles.messageSender}>{item.user?.name}</Text>
+          )}
+          <Text style={[styles.messageText, isOwnMessage && styles.ownMessageText]}>
+            {item.content}
+          </Text>
+          <Text style={[styles.messageTime, isOwnMessage && styles.ownMessageTime]}>
+            {formatTime(item.createdAt)}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+            <Text style={styles.backButton}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.chatHeaderTitle}>Loading...</Text>
+          <View style={{ width: 50 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading messages...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+            <Text style={styles.backButton}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.chatHeaderTitle}>Error</Text>
+          <View style={{ width: 50 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadMessages}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Chat Header */}
+      <View style={styles.chatHeader}>
+        <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+          <Text style={styles.backButton}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.chatHeaderTitle}>{getThreadTitle()}</Text>
+        {thread?.type === 'group' ? (
+          <TouchableOpacity onPress={() => setShowMembersModal(true)}>
+            <Text style={styles.membersButton}>Members</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 50 }} />
+        )}
+      </View>
+
+      <View style={styles.chatContentContainer}>
+        {/* Messages List */}
+        <FlatList
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
+
+        {/* Message Input */}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 108 : 0}
+          style={styles.keyboardAvoidingInput}
+        >
+          <View style={styles.messageInputContainer}>
+            <TextInput
+              style={styles.messageInput}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Type a message..."
+              multiline
+              maxLength={1000}
+              returnKeyType="send"
+              onSubmitEditing={sendMessage}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
+              onPress={sendMessage}
+              disabled={!newMessage.trim() || sending}
+            >
+              <Text style={styles.sendButtonText}>
+                {sending ? '...' : 'Send'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+
+      {/* Members Modal */}
+      <Modal
+        visible={showMembersModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowMembersModal(false)}
+      >
+        <SafeAreaView style={styles.userSelectionModal}>
+          <View style={styles.userSelectionHeader}>
+            <Text style={styles.userSelectionTitle}>Members</Text>
+            <TouchableOpacity onPress={() => setShowMembersModal(false)}>
+              <Text style={styles.userSelectionCancelButton}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingMembers ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading members...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={threadMembers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={styles.userItem}>
+                  <View style={styles.userAvatar}>
+                    <Text style={styles.userAvatarText}>
+                      {item.users?.name ? item.users.name.charAt(0).toUpperCase() : '?'}
+                    </Text>
+                  </View>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.users?.name || 'Unknown User'}</Text>
+                    <Text style={styles.userEmail}>{item.users?.email}</Text>
+                  </View>
+                  <View style={styles.memberRole}>
+                    <Text style={styles.memberRoleText}>{item.role}</Text>
+                  </View>
+                </View>
+              )}
+              style={styles.usersList}
+              ListFooterComponent={() => (
+                <TouchableOpacity
+                  style={styles.addMemberButton}
+                  onPress={handleAddMembers}
+                >
+                  <Text style={styles.addMemberButtonText}>+ Add Members</Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* Add Members Modal */}
+      <Modal
+        visible={showAddMembersModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCancelAddMembers}
+      >
+        <SafeAreaView style={styles.userSelectionModal}>
+          <View style={styles.userSelectionHeader}>
+            <Text style={styles.userSelectionTitle}>Add Members</Text>
+            <TouchableOpacity onPress={handleCancelAddMembers}>
+              <Text style={styles.userSelectionCancelButton}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingUsersForAdd ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading users...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={availableUsersForAdd}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.userItem,
+                    selectedUsersForAdd.includes(item.id) && styles.selectedUserItem
+                  ]}
+                  onPress={() => handleUserSelectionForAdd(item.id)}
+                >
+                  <View style={styles.userAvatar}>
+                    <Text style={styles.userAvatarText}>
+                      {item.name ? item.name.charAt(0).toUpperCase() : '?'}
+                    </Text>
+                  </View>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.name || 'Unknown User'}</Text>
+                    <Text style={styles.userEmail}>{item.email}</Text>
+                  </View>
+                  {selectedUsersForAdd.includes(item.id) && (
+                    <View style={styles.selectedIndicator}>
+                      <Text style={styles.selectedIndicatorText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+              style={styles.usersList}
+            />
+          )}
+
+          <View style={styles.userSelectionFooter}>
+            <TouchableOpacity
+              style={[
+                styles.startChatButton,
+                (selectedUsersForAdd.length === 0 || addingMembers) && styles.startChatButtonDisabled
+              ]}
+              onPress={handleAddSelectedMembers}
+              disabled={selectedUsersForAdd.length === 0 || addingMembers}
+            >
+              <Text style={[
+                styles.startChatButtonText,
+                (selectedUsersForAdd.length === 0 || addingMembers) && styles.startChatButtonTextDisabled
+              ]}>
+                {addingMembers 
+                  ? 'Adding...' 
+                  : `Add ${selectedUsersForAdd.length} Member${selectedUsersForAdd.length !== 1 ? 's' : ''}`
+                }
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1825,48 +2941,58 @@ const MainApp: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState('events');
 
   const renderScreen = () => {
+    if (currentScreen.startsWith('chat-thread-')) {
+      // Handle chat thread screens
+      const threadId = currentScreen.replace('chat-thread-', '');
+      return <ChatThreadScreen threadId={threadId} setCurrentScreen={setCurrentScreen} />;
+    }
+    
     switch (currentScreen) {
       case 'events':
         return <EventsScreen setCurrentScreen={setCurrentScreen} />;
       case 'profile':
         return <ProfileScreen />;
       case 'chat':
-        return <ChatScreen />;
+        return <ChatScreen setCurrentScreen={setCurrentScreen} />;
       default:
         return <EventsScreen setCurrentScreen={setCurrentScreen} />;
     }
   };
 
+  const isInChatThread = currentScreen.startsWith('chat-thread-');
+
   return (
     <SafeAreaView style={styles.container}>
       {renderScreen()}
       
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={[styles.navItem, currentScreen === 'events' && styles.activeNavItem]}
-          onPress={() => setCurrentScreen('events')}
-        >
-          <Text style={styles.navIcon}>📅</Text>
-          <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>Events</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.navItem, currentScreen === 'chat' && styles.activeNavItem]}
-          onPress={() => setCurrentScreen('chat')}
-        >
-          <Text style={styles.navIcon}>💬</Text>
-          <Text style={[styles.navLabel, currentScreen === 'chat' && styles.activeNavLabel]}>Chat</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.navItem, currentScreen === 'profile' && styles.activeNavItem]}
-          onPress={() => setCurrentScreen('profile')}
-        >
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={[styles.navLabel, currentScreen === 'profile' && styles.activeNavLabel]}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom Navigation - Hide when in chat thread */}
+      {!isInChatThread && (
+        <View style={styles.bottomNav}>
+          <TouchableOpacity
+            style={[styles.navItem, currentScreen === 'events' && styles.activeNavItem]}
+            onPress={() => setCurrentScreen('events')}
+          >
+            <Text style={styles.navIcon}>📅</Text>
+            <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>Events</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.navItem, currentScreen === 'chat' && styles.activeNavItem]}
+            onPress={() => setCurrentScreen('chat')}
+          >
+            <Text style={styles.navIcon}>💬</Text>
+            <Text style={[styles.navLabel, currentScreen === 'chat' && styles.activeNavLabel]}>Chat</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.navItem, currentScreen === 'profile' && styles.activeNavItem]}
+            onPress={() => setCurrentScreen('profile')}
+          >
+            <Text style={styles.navIcon}>👤</Text>
+            <Text style={[styles.navLabel, currentScreen === 'profile' && styles.activeNavLabel]}>Profile</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1942,7 +3068,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 35, // 35px from the bottom
     right: 20,
-    backgroundColor: '#265451', // Using your brand color from the palette
+    backgroundColor: '#D29507', // Match active tab color
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -2205,22 +3331,25 @@ const styles = StyleSheet.create({
   chatTabs: {
     flexDirection: 'row',
     backgroundColor: 'white',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    marginTop: 10,
+    justifyContent: 'center',
   },
   chatTab: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    marginRight: 20,
     borderRadius: 20,
+    marginHorizontal: 6,
+    alignItems: 'center',
   },
   activeChatTab: {
     backgroundColor: '#D29507',
   },
   chatTabText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
     fontWeight: '500',
   },
@@ -2228,65 +3357,349 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   chatsList: {
-    padding: 20,
+    flex: 1,
+    paddingTop: 8,
+    paddingBottom: 20,
   },
   chatItem: {
     flexDirection: 'row',
     backgroundColor: 'white',
     borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    alignItems: 'flex-start',
+  },
+  chatMainContent: {
+    flex: 1,
+    marginRight: 12,
+    alignSelf: 'stretch',
+  },
+  chatRightContent: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  chatName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 4,
+    alignSelf: 'flex-start',
+  },
+  chatTitle: {
+    fontSize: 13,
+    color: '#D29507',
+    fontWeight: '500',
+    marginBottom: 4,
+    alignSelf: 'flex-start',
+  },
+  chatMessage: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 18,
+    alignSelf: 'flex-start',
+  },
+  chatTime: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  unreadBadge: {
+    backgroundColor: '#D29507',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  unreadText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  // Group Chat Filters
+  groupFilters: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    justifyContent: 'center',
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginRight: 12,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+  },
+  activeFilterButton: {
+    backgroundColor: '#D29507',
+  },
+  filterButtonText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  activeFilterButtonText: {
+    color: 'white',
+  },
+  // Loading and Error States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ef4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+  },
+  // Chat Thread Screen Styles
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    fontSize: 16,
+    color: '#D29507',
+    fontWeight: '600',
+  },
+  chatHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#265451',
+    flex: 1,
+    textAlign: 'center',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  chatContentContainer: {
+    flex: 1,
+  },
+  keyboardAvoidingInput: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  messagesList: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    paddingBottom: 80, // Space for input area
+  },
+  messagesContainer: {
+    padding: 20,
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    marginBottom: 15,
+    alignItems: 'flex-end',
+  },
+  ownMessageContainer: {
+    flexDirection: 'row-reverse',
+  },
+  messageAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 10,
+  },
+  messageBubble: {
+    maxWidth: '70%',
+    backgroundColor: 'white',
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
-  chatAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 15,
+  ownMessageBubble: {
+    backgroundColor: '#D29507',
   },
-  chatContent: {
-    flex: 1,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  chatName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#265451',
-  },
-  chatTime: {
+  messageSender: {
     fontSize: 12,
     color: '#666',
+    fontWeight: '600',
+    marginBottom: 4,
   },
-  chatTitle: {
-    fontSize: 12,
-    color: '#D29507',
-    marginBottom: 5,
+  messageText: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 20,
   },
-  chatMessage: {
+  ownMessageText: {
+    color: 'white',
+  },
+  messageTime: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  ownMessageTime: {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  messageInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    minHeight: 60,
+  },
+  messageInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginRight: 10,
+    maxHeight: 100,
+    fontSize: 16,
+    backgroundColor: '#f8f9fa',
+  },
+  sendButton: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  sendButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // New Chat Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newChatModal: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    margin: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  newChatModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#265451',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  newChatModalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  newChatOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#f8f9fa',
+    marginBottom: 12,
+  },
+  newChatOptionIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  newChatOptionContent: {
+    flex: 1,
+  },
+  newChatOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 4,
+  },
+  newChatOptionDescription: {
     fontSize: 14,
     color: '#666',
   },
-  unreadBadge: {
-    backgroundColor: '#D29507',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
+  newChatCancelButton: {
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
   },
-  unreadText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  newChatCancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   // Bottom Navigation
   bottomNav: {
@@ -2413,6 +3826,176 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#9CA3AF',
     fontWeight: '300',
+  },
+  // User Selection Modal Styles
+  userSelectionModal: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  userSelectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  userSelectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#265451',
+    flex: 1,
+  },
+  userSelectionCancelButton: {
+    color: '#D29507',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  usersList: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginVertical: 6,
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  selectedUserItem: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#D29507',
+  },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#D29507',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  userAvatarText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  selectedIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#D29507',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedIndicatorText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  userSelectionFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  startChatButton: {
+    backgroundColor: '#D29507',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  startChatButtonDisabled: {
+    backgroundColor: '#E5E7EB',
+  },
+  startChatButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  startChatButtonTextDisabled: {
+    color: '#9CA3AF',
+  },
+  nameChatContent: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  nameChatSubtitle: {
+    fontSize: 18,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  nameChatInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 10,
+  },
+  nameChatHint: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'right',
+  },
+  membersButton: {
+    fontSize: 16,
+    color: '#D29507',
+    fontWeight: '600',
+  },
+  memberRole: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+  },
+  memberRoleText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  addMemberButton: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: '#D29507',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  addMemberButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
