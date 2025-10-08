@@ -348,6 +348,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       showAttendeeCount: event.show_attendee_count,
       coverImageUrl: event.cover_image_url || '',
     });
+    
+    // Set image preview for existing images
+    if (event.cover_image_url) {
+      setImagePreview(event.cover_image_url);
+    } else {
+      setImagePreview('');
+    }
     setActivities((event.activities || []).map(activity => ({
       name: activity.title,
       description: activity.description || '',
@@ -434,15 +441,42 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     }
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate the file
+    const validation = ImageUploadService.validateImageFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setImageFile(file);
+    
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+
+    // Automatically upload the image
+    setUploadingImage(true);
+    try {
+      const imageUrl = await ImageUploadService.uploadImage(file, 'events');
+      setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
+      setImageFile(null);
+      setImagePreview('');
+      
+      // Clear the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      console.log('✅ Image uploaded automatically');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload image. Please try again.');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -1608,6 +1642,73 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
               <form onSubmit={handleEventSubmit}>
                 <div style={{ display: 'grid', gap: '24px' }}>
+                  {/* Event Cover Image */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Event Cover Image
+                    </label>
+                    {imagePreview && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          style={{ width: '200px', height: '120px', objectFit: 'cover', borderRadius: '8px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          style={{
+                            backgroundColor: '#FEF2F2',
+                            color: '#DC2626',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            marginLeft: '8px'
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                      style={{
+                        backgroundColor: uploadingImage ? '#9CA3AF' : '#F3F4F6',
+                        color: uploadingImage ? '#6B7280' : '#374151',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        fontSize: '14px',
+                        cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      {uploadingImage ? (
+                        <>
+                          <div style={{ width: '16px', height: '16px', border: '2px solid #6B7280', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          📷 Select Image
+                        </>
+                      )}
+                    </button>
+                  </div>
+
                   {/* Event Name */}
                   <div>
                     <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
@@ -1649,90 +1750,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     />
                   </div>
 
-                  {/* Event Cover Image */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                      Event Cover Image
-                    </label>
-                    {imagePreview && (
-                      <div style={{ marginBottom: '12px' }}>
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          style={{ width: '200px', height: '120px', objectFit: 'cover', borderRadius: '8px' }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleRemoveImage}
-                          style={{
-                            backgroundColor: '#FEF2F2',
-                            color: '#DC2626',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '4px 8px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            marginLeft: '8px'
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    )}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      style={{ display: 'none' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      style={{
-                        backgroundColor: '#F3F4F6',
-                        color: '#374151',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '12px 16px',
-                        fontSize: '14px',
-                        cursor: 'pointer',
-                        marginRight: '8px'
-                      }}
-                    >
-                      📷 Select Image
-                    </button>
-                    {imageFile && (
-                      <button
-                        type="button"
-                        onClick={handleUploadImage}
-                        disabled={uploadingImage}
-                        style={{
-                          backgroundColor: uploadingImage ? '#9CA3AF' : '#3B82F6',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '12px 16px',
-                          fontSize: '14px',
-                          cursor: uploadingImage ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}
-                      >
-                        {uploadingImage ? (
-                          <>
-                            <div style={{ width: '16px', height: '16px', border: '2px solid #ffffff', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            📷 Upload Image
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
 
                   {/* Date and Time */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

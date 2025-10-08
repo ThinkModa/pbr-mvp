@@ -372,11 +372,19 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
               />
             }
           >
-            {/* Event Image Placeholder */}
+            {/* Event Image */}
             <View style={styles.imageContainer}>
-              <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderText}>📅</Text>
-              </View>
+              {event.cover_image_url ? (
+                <Image
+                  source={{ uri: event.cover_image_url }}
+                  style={styles.eventImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Text style={styles.imagePlaceholderText}>📅</Text>
+                </View>
+              )}
             </View>
 
             {/* Event Details */}
@@ -852,6 +860,10 @@ const styles = StyleSheet.create({
   imageContainer: {
     height: 200,
     backgroundColor: '#F9FAFB',
+  },
+  eventImage: {
+    width: '100%',
+    height: '100%',
   },
   imagePlaceholder: {
     flex: 1,
