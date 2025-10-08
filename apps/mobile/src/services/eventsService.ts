@@ -31,6 +31,7 @@ export interface Activity {
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
+  event_id: string;
 }
 
 export class EventsService {
@@ -62,6 +63,15 @@ export class EventsService {
 
     const events = await response.json();
     console.log('✅ Successfully fetched', events.length, 'events from live database');
+    
+    // Debug: Log the first event's activities
+    if (events.length > 0) {
+      console.log('First event activities:', events[0].activities);
+      if (events[0].activities && events[0].activities.length > 0) {
+        console.log('First activity details:', events[0].activities[0]);
+      }
+    }
+    
     return events || [];
   }
 
@@ -86,5 +96,31 @@ export class EventsService {
     return events.filter(event => 
       event.start_time >= startDate && event.end_time <= endDate
     );
+  }
+
+  // Get all activities for a specific event
+  static async getEventActivities(eventId: string): Promise<Activity[]> {
+    console.log('Fetching activities for event:', eventId);
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activities?event_id=eq.${eventId}&order=start_time.asc`,
+      {
+        headers: {
+          'apikey': this.SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error fetching event activities:', errorText);
+      throw new Error(`Failed to fetch event activities: ${errorText}`);
+    }
+
+    const activities = await response.json();
+    console.log('✅ Successfully fetched', activities.length, 'activities for event', eventId);
+    return activities || [];
   }
 }

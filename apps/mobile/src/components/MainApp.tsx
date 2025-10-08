@@ -11,23 +11,71 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { useAuth } from '../contexts/MockAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
+import { SpeakersService, EventSpeaker } from '../services/speakersService';
+import { BusinessesService, EventBusiness } from '../services/businessesService';
+import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import EventModal from './EventModal';
+import ActivityModal from './ActivityModal';
+import SpeakerModal from './SpeakerModal';
+import BusinessModal from './BusinessModal';
+import OrganizationModal from './OrganizationModal';
 
 // Events Screen
-const EventsScreen: React.FC = () => {
+const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
   const { user, signOut } = useAuth();
   const [events, setEvents] = useState<EventWithActivities[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Modal state management - single modal with different views
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalView, setModalView] = useState<'event' | 'activity'>('event');
   const [selectedEvent, setSelectedEvent] = useState<EventWithActivities | null>(null);
-  const [eventModalVisible, setEventModalVisible] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [userRSVPs, setUserRSVPs] = useState<Record<string, RSVPStatus>>({});
   const [showMyEvents, setShowMyEvents] = useState(false);
+  
+  // Speaker state management
+  const [eventSpeakers, setEventSpeakers] = useState<EventSpeaker[]>([]);
+  const [activitySpeakers, setActivitySpeakers] = useState<EventSpeaker[]>([]);
+  const [selectedSpeaker, setSelectedSpeaker] = useState<any>(null);
+  const [speakerModalVisible, setSpeakerModalVisible] = useState(false);
+  
+  // Business and Organization state management
+  const [eventBusinesses, setEventBusinesses] = useState<EventBusiness[]>([]);
+  const [eventOrganizations, setEventOrganizations] = useState<EventOrganization[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
+  const [selectedOrganization, setSelectedOrganization] = useState<any>(null);
+  const [selectedBusinessContacts, setSelectedBusinessContacts] = useState<any[]>([]);
+  const [businessModalVisible, setBusinessModalVisible] = useState(false);
+  const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
+
+  // Debug logging
+  console.log('MainApp render:', { 
+    modalVisible,
+    modalView,
+    event: selectedEvent?.title, 
+    selectedActivity: selectedActivity?.title,
+    selectedActivityId: selectedActivity?.id
+  });
+  
+  // Additional debugging for modal state
+  if (modalVisible && modalView === 'activity') {
+    console.log('🎯 Activity view should be visible now!');
+  }
+  
+  // Debug: Check modal state
+  console.log('🎯 Modal state check:', {
+    modalVisible,
+    modalView,
+    hasEvent: !!selectedEvent,
+    hasActivity: !!selectedActivity
+  });
 
   useEffect(() => {
     loadEvents();
@@ -95,8 +143,13 @@ const EventsScreen: React.FC = () => {
     console.log('🎯 Event pressed:', event.title);
     console.log('🎯 Setting selected event and modal visible');
     setSelectedEvent(event);
-    setEventModalVisible(true);
-    console.log('🎯 Modal state updated - should be visible now');
+    setModalView('event');
+    setModalVisible(true);
+    // Load speakers, businesses, and organizations for this event
+    loadEventSpeakers(event.id);
+    loadEventBusinesses(event.id);
+    loadEventOrganizations(event.id);
+    console.log('🎯 Event view should be visible now');
   };
 
   const handleEventRSVP = async (eventId: string, status: 'attending' | 'not_attending' | null) => {
@@ -121,8 +174,102 @@ const EventsScreen: React.FC = () => {
     }
     
     // Close the modal
-    setEventModalVisible(false);
+    setModalVisible(false);
     setSelectedEvent(null);
+  };
+
+  const handleActivityPress = (activity: any) => {
+    console.log('🎯 Activity pressed in MainApp:', activity);
+    console.log('🎯 Activity details:', {
+      id: activity?.id,
+      title: activity?.title,
+      description: activity?.description,
+      event_id: activity?.event_id
+    });
+    console.log('🎯 Current state before update:', {
+      modalVisible,
+      modalView,
+      selectedActivity: selectedActivity?.title
+    });
+    console.log('🎯 Setting selectedActivity and switching to activity view...');
+    setSelectedActivity(activity);
+    setModalView('activity');
+    // Load activity-specific speakers
+    loadActivitySpeakers(activity.id);
+    console.log('🎯 Activity view should be visible now - smooth transition');
+  };
+
+  // Load speakers for the current event
+  const loadEventSpeakers = async (eventId: string) => {
+    try {
+      console.log('Loading speakers for event:', eventId);
+      const speakers = await SpeakersService.getEventSpeakers(eventId);
+      setEventSpeakers(speakers);
+      console.log('✅ Loaded event speakers:', speakers.length);
+    } catch (error) {
+      console.error('Error loading event speakers:', error);
+      setEventSpeakers([]);
+    }
+  };
+
+  // Load speakers for the current activity
+  const loadActivitySpeakers = async (activityId: string) => {
+    try {
+      console.log('Loading speakers for activity:', activityId);
+      const speakers = await SpeakersService.getActivitySpeakers(activityId);
+      setActivitySpeakers(speakers);
+      console.log('✅ Loaded activity speakers:', speakers.length);
+    } catch (error) {
+      console.error('Error loading activity speakers:', error);
+      setActivitySpeakers([]);
+    }
+  };
+
+  // Handle speaker press
+  const handleSpeakerPress = (speaker: any) => {
+    console.log('Speaker pressed:', speaker);
+    setSelectedSpeaker(speaker);
+    setSpeakerModalVisible(true);
+  };
+
+  // Load businesses and organizations for the current event
+  const loadEventBusinesses = async (eventId: string) => {
+    try {
+      console.log('Loading businesses for event:', eventId);
+      const businesses = await BusinessesService.getEventBusinesses(eventId);
+      setEventBusinesses(businesses);
+      console.log('✅ Loaded event businesses:', businesses.length);
+    } catch (error) {
+      console.error('Error loading event businesses:', error);
+      setEventBusinesses([]);
+    }
+  };
+
+  const loadEventOrganizations = async (eventId: string) => {
+    try {
+      console.log('Loading organizations for event:', eventId);
+      const organizations = await OrganizationsService.getEventOrganizations(eventId);
+      setEventOrganizations(organizations);
+      console.log('✅ Loaded event organizations:', organizations.length);
+    } catch (error) {
+      console.error('Error loading event organizations:', error);
+      setEventOrganizations([]);
+    }
+  };
+
+  // Handle business press
+  const handleBusinessPress = (business: any) => {
+    console.log('Business pressed:', business);
+    setSelectedBusiness(business.business);
+    setSelectedBusinessContacts(business.contacts || []);
+    setBusinessModalVisible(true);
+  };
+
+  // Handle organization press
+  const handleOrganizationPress = (organization: any) => {
+    console.log('Organization pressed:', organization);
+    setSelectedOrganization(organization.organization);
+    setOrganizationModalVisible(true);
   };
 
   const toggleMyEvents = () => {
@@ -308,16 +455,1010 @@ const EventsScreen: React.FC = () => {
               />
             )}
       
-      {/* Event Modal */}
-      <EventModal
-        visible={eventModalVisible}
-        event={selectedEvent}
-        onClose={() => {
-          console.log('🚪 Modal close triggered');
-          setEventModalVisible(false);
-          setSelectedEvent(null);
+      {/* Single Modal with Conditional Content - No Nested Modals */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        onRequestClose={() => {
+          if (modalView === 'activity') {
+            setModalView('event');
+            setSelectedActivity(null);
+          } else {
+            setModalVisible(false);
+            setSelectedEvent(null);
+          }
         }}
-        onRSVP={handleEventRSVP}
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#e0e0e0' }}>
+            <TouchableOpacity 
+              onPress={() => {
+                if (modalView === 'activity') {
+                  setModalView('event');
+                  setSelectedActivity(null);
+                } else {
+                  setModalVisible(false);
+                  setSelectedEvent(null);
+                }
+              }} 
+              style={{ padding: 10 }}
+            >
+              <Text style={{ fontSize: 18, color: '#265451' }}>✕</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row' }}>
+              <TouchableOpacity style={{ padding: 10 }}>
+                <Text style={{ fontSize: 18, color: '#265451' }}>↗</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Content */}
+          <ScrollView 
+            style={{ flex: 1 }} 
+            contentContainerStyle={{ paddingBottom: 100 }}
+            showsVerticalScrollIndicator={false}
+            bounces={true}
+            alwaysBounceVertical={true}
+          >
+            {modalView === 'event' && selectedEvent ? (
+              <View>
+                {/* Event Image Placeholder */}
+                <View style={{ height: 200, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 48, color: '#9CA3AF' }}>📅</Text>
+                </View>
+
+                {/* Enhanced Event Banner - Airbnb Style */}
+                <View style={{ padding: 20, paddingBottom: 0 }}>
+                  {/* Centered Event Title */}
+                  <Text style={{ 
+                    fontSize: 28, 
+                    fontWeight: 'bold', 
+                    color: '#111827', 
+                    textAlign: 'center',
+                    marginBottom: 8
+                  }}>
+                    {selectedEvent.title}
+                  </Text>
+                  
+                  {/* Event Description */}
+                  <Text style={{ 
+                    fontSize: 16, 
+                    color: '#6B7280', 
+                    textAlign: 'center',
+                    lineHeight: 22
+                  }}>
+                    {selectedEvent.description || 'Event details'}
+                  </Text>
+                </View>
+
+                {/* Event Details */}
+                <View style={{ padding: 20 }}>
+                  {/* Location */}
+                  <View style={{ marginBottom: 20 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 16, color: '#666', marginRight: 8 }}>📍</Text>
+                      <Text style={{ fontSize: 16, color: '#666' }}>
+                        {selectedEvent.location?.name || 'Location TBD'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Capacity/Attendees/Cost Section - Airbnb Style with Separators */}
+                  <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    marginBottom: 20,
+                    paddingVertical: 12
+                  }}>
+                    {/* Capacity */}
+                    {selectedEvent?.show_capacity !== false && (
+                      <>
+                        <Text style={{ fontSize: 16, color: '#111827', fontWeight: '600' }}>
+                          {selectedEvent?.max_capacity || '∞'} capacity
+                        </Text>
+                        <View style={{ width: 1, height: 16, backgroundColor: '#D1D5DB', marginHorizontal: 12 }} />
+                      </>
+                    )}
+                    
+                    {/* Attendee Count */}
+                    {selectedEvent?.show_attendee_count !== false && (
+                      <>
+                        <Text style={{ fontSize: 16, color: '#111827', fontWeight: '600' }}>
+                          {selectedEvent?.current_rsvps || 0} registered
+                        </Text>
+                        <View style={{ width: 1, height: 16, backgroundColor: '#D1D5DB', marginHorizontal: 12 }} />
+                      </>
+                    )}
+                    
+                    {/* Cost */}
+                    {selectedEvent?.show_price !== false && (selectedEvent?.is_free || selectedEvent?.price) && (
+                      <Text style={{ fontSize: 16, color: '#111827', fontWeight: '600' }}>
+                        {selectedEvent?.is_free ? 'Free' : `$${((selectedEvent?.price || 0) / 100).toFixed(2)}`}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Start Date Shadow Card */}
+                  <View style={{ 
+                    backgroundColor: 'white', 
+                    padding: 15, 
+                    borderRadius: 12, 
+                    marginBottom: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF', marginRight: 8 }}>📅</Text>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF' }}>Start Date</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>
+                      {new Date(selectedEvent.start_time + 'Z').toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        timeZone: 'UTC'
+                      })}
+                    </Text>
+                    <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
+                      {new Date(selectedEvent.start_time + 'Z').toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        timeZone: 'UTC'
+                      })}
+                    </Text>
+                  </View>
+
+                  {/* End Date Shadow Card */}
+                  <View style={{ 
+                    backgroundColor: 'white', 
+                    padding: 15, 
+                    borderRadius: 12, 
+                    marginBottom: 20,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 3,
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF', marginRight: 8 }}>🏁</Text>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF' }}>End Date</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>
+                      {new Date(selectedEvent.end_time + 'Z').toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        timeZone: 'UTC'
+                      })}
+                    </Text>
+                    <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
+                      {new Date(selectedEvent.end_time + 'Z').toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        timeZone: 'UTC'
+                      })}
+                    </Text>
+                  </View>
+
+                  {/* Activities */}
+                  {selectedEvent.activities && selectedEvent.activities.length > 0 && (
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                        Activities ({selectedEvent.activities.length})
+                      </Text>
+                      {selectedEvent.activities.map((activity) => (
+                        <TouchableOpacity
+                          key={activity.id}
+                          style={{ 
+                            backgroundColor: 'white', 
+                            padding: 15, 
+                            borderRadius: 12, 
+                            marginBottom: 10,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 4,
+                            elevation: 3,
+                          }}
+                          onPress={() => handleActivityPress(activity)}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 }}>
+                                {activity.title}
+                              </Text>
+                              <Text style={{ fontSize: 14, color: '#6B7280' }}>
+                                {new Date(activity.start_time + 'Z').toLocaleTimeString('en-US', {
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  timeZone: 'UTC'
+                                })} - {new Date(activity.end_time + 'Z').toLocaleTimeString('en-US', {
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  timeZone: 'UTC'
+                                })}
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 18, color: '#9CA3AF' }}>›</Text>
+                          </View>
+                          <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 8 }} numberOfLines={2}>
+                            {activity.description || 'No description available.'}
+                          </Text>
+                          {activity.location?.name && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={{ fontSize: 14, color: '#6B7280', marginRight: 4 }}>📍</Text>
+                              <Text style={{ fontSize: 14, color: '#6B7280' }}>{activity.location.name}</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Speakers Section */}
+                  {eventSpeakers.length > 0 && (
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                        Speakers ({eventSpeakers.length})
+                      </Text>
+                      <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginBottom: 10 }}
+                        contentContainerStyle={{ paddingRight: 20 }}
+                      >
+                        {eventSpeakers.map((eventSpeaker) => (
+                          <TouchableOpacity
+                            key={eventSpeaker.id}
+                            style={{ 
+                              backgroundColor: 'white', 
+                              padding: 15, 
+                              borderRadius: 12, 
+                              marginRight: 12,
+                              width: 120,
+                              alignItems: 'center',
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: 0.1,
+                              shadowRadius: 4,
+                              elevation: 3,
+                            }}
+                            onPress={() => handleSpeakerPress(eventSpeaker)}
+                          >
+                            <View style={{ 
+                              width: 60, 
+                              height: 60, 
+                              borderRadius: 30, 
+                              backgroundColor: '#F3F4F6', 
+                              justifyContent: 'center', 
+                              alignItems: 'center',
+                              marginBottom: 10
+                            }}>
+                              {eventSpeaker.speaker?.profileImageUrl ? (
+                                <Image 
+                                  source={{ uri: eventSpeaker.speaker.profileImageUrl }} 
+                                  style={{ width: 60, height: 60, borderRadius: 30 }} 
+                                />
+                              ) : (
+                                <Text style={{ fontSize: 20, color: '#6B7280', fontWeight: 'bold' }}>
+                                  {eventSpeaker.speaker?.firstName?.[0]}{eventSpeaker.speaker?.lastName?.[0]}
+                                </Text>
+                              )}
+                            </View>
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={1}>
+                              {eventSpeaker.speaker?.firstName} {eventSpeaker.speaker?.lastName}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', marginBottom: 2 }} numberOfLines={1}>
+                              {eventSpeaker.speaker?.title}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }} numberOfLines={1}>
+                              @{eventSpeaker.speaker?.company}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Sponsors Section (Businesses + Organizations with is_sponsor=true) */}
+                  {(() => {
+                    const sponsorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor === true);
+                    const sponsorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor === true);
+                    const totalSponsors = sponsorBusinesses.length + sponsorOrganizations.length;
+                    
+                    return totalSponsors > 0 && (
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                          🏢 Sponsors ({totalSponsors})
+                        </Text>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          style={{ marginBottom: 10 }}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                        >
+                          {/* Render Sponsor Businesses */}
+                          {sponsorBusinesses.map((eventBusiness) => (
+                            <TouchableOpacity
+                              key={`business-${eventBusiness.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleBusinessPress(eventBusiness)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventBusiness.business?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventBusiness.business.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventBusiness.business?.name}
+                              </Text>
+                              {eventBusiness.sponsorshipLevel && (
+                                <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
+                                  {eventBusiness.sponsorshipLevel} Sponsor
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Render Sponsor Organizations */}
+                          {sponsorOrganizations.map((eventOrganization) => (
+                            <TouchableOpacity
+                              key={`organization-${eventOrganization.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleOrganizationPress(eventOrganization)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventOrganization.organization?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventOrganization.organization?.name}
+                              </Text>
+                              {eventOrganization.sponsorshipLevel && (
+                                <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
+                                  {eventOrganization.sponsorshipLevel} Sponsor
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    );
+                  })()}
+
+                  {/* Vendors Section (Businesses + Organizations with is_sponsor=false/null) */}
+                  {(() => {
+                    const vendorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor !== true);
+                    const vendorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor !== true);
+                    const totalVendors = vendorBusinesses.length + vendorOrganizations.length;
+                    
+                    return totalVendors > 0 && (
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                          🛍️ Vendors ({totalVendors})
+                        </Text>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          style={{ marginBottom: 10 }}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                        >
+                          {/* Render Vendor Businesses */}
+                          {vendorBusinesses.map((eventBusiness) => (
+                            <TouchableOpacity
+                              key={`business-${eventBusiness.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleBusinessPress(eventBusiness)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventBusiness.business?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventBusiness.business.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventBusiness.business?.name}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
+                                Vendor
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Render Vendor Organizations */}
+                          {vendorOrganizations.map((eventOrganization) => (
+                            <TouchableOpacity
+                              key={`organization-${eventOrganization.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleOrganizationPress(eventOrganization)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventOrganization.organization?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventOrganization.organization?.name}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
+                                Vendor
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    );
+                  })()}
+                </View>
+              </View>
+            ) : modalView === 'activity' && selectedActivity ? (
+              <View>
+                {/* Event Banner */}
+                {selectedEvent && (
+                  <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, margin: 20, marginBottom: 0 }}>
+                    <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center' }}>
+                      📅 {selectedEvent.title}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={{ padding: 20 }}>
+                  {/* Activity Title */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#265451', marginBottom: 10 }}>
+                      {selectedActivity.title}
+                    </Text>
+                    {selectedActivity.is_required && (
+                      <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' }}>
+                        <Text style={{ fontSize: 12, color: '#92400E', fontWeight: '600' }}>Required</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Date and Time */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: 16, color: '#333' }}>
+                      📅 {new Date(selectedActivity.start_time + 'Z').toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        timeZone: 'UTC'
+                      })} • {new Date(selectedActivity.start_time + 'Z').toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        timeZone: 'UTC'
+                      })}
+                    </Text>
+                  </View>
+
+                  {/* Location */}
+                  {selectedActivity.location?.name && (
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={{ fontSize: 16, color: '#333' }}>
+                        📍 {selectedActivity.location.name}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Activity Info */}
+                  <View style={{ marginBottom: 20 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF' }}>⏱️ Duration</Text>
+                      <Text style={{ fontSize: 16, color: '#333' }}>
+                        {Math.round((new Date(selectedActivity.end_time + 'Z').getTime() - new Date(selectedActivity.start_time + 'Z').getTime()) / (1000 * 60))} minutes
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF' }}>👥 Capacity</Text>
+                      <Text style={{ fontSize: 16, color: '#333' }}>
+                        {selectedActivity.current_rsvps || 0} / {selectedActivity.max_capacity || '∞'} attendees
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Description */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: 16, color: '#333', lineHeight: 24 }}>
+                      {selectedActivity.description || 'No description available.'}
+                    </Text>
+                  </View>
+
+                  {/* Activity Speakers Section */}
+                  {activitySpeakers.length > 0 && (
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                        👥 Speakers ({activitySpeakers.length})
+                      </Text>
+                      <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginBottom: 10 }}
+                        contentContainerStyle={{ paddingRight: 20 }}
+                      >
+                        {activitySpeakers.map((activitySpeaker) => (
+                          <TouchableOpacity
+                            key={activitySpeaker.id}
+                            style={{ 
+                              backgroundColor: 'white', 
+                              padding: 15, 
+                              borderRadius: 12, 
+                              marginRight: 12,
+                              width: 120,
+                              alignItems: 'center',
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: 0.1,
+                              shadowRadius: 4,
+                              elevation: 3,
+                            }}
+                            onPress={() => handleSpeakerPress(activitySpeaker)}
+                          >
+                            <View style={{ 
+                              width: 60, 
+                              height: 60, 
+                              borderRadius: 30, 
+                              backgroundColor: '#F3F4F6', 
+                              justifyContent: 'center', 
+                              alignItems: 'center',
+                              marginBottom: 10
+                            }}>
+                              {activitySpeaker.speaker?.profileImageUrl ? (
+                                <Image 
+                                  source={{ uri: activitySpeaker.speaker.profileImageUrl }} 
+                                  style={{ width: 60, height: 60, borderRadius: 30 }} 
+                                />
+                              ) : (
+                                <Text style={{ fontSize: 20, color: '#6B7280', fontWeight: 'bold' }}>
+                                  {activitySpeaker.speaker?.firstName?.[0]}{activitySpeaker.speaker?.lastName?.[0]}
+                                </Text>
+                              )}
+                            </View>
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={1}>
+                              {activitySpeaker.speaker?.firstName} {activitySpeaker.speaker?.lastName}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', marginBottom: 2 }} numberOfLines={1}>
+                              {activitySpeaker.speaker?.title}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }} numberOfLines={1}>
+                              @{activitySpeaker.speaker?.company}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Event Sponsors Section (showing event sponsors in activity view) */}
+                  {(() => {
+                    const sponsorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor === true);
+                    const sponsorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor === true);
+                    const totalSponsors = sponsorBusinesses.length + sponsorOrganizations.length;
+                    
+                    return totalSponsors > 0 && (
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                          🏢 Sponsors ({totalSponsors})
+                        </Text>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          style={{ marginBottom: 10 }}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                        >
+                          {/* Render Sponsor Businesses */}
+                          {sponsorBusinesses.map((eventBusiness) => (
+                            <TouchableOpacity
+                              key={`business-${eventBusiness.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleBusinessPress(eventBusiness)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventBusiness.business?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventBusiness.business.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventBusiness.business?.name}
+                              </Text>
+                              {eventBusiness.sponsorshipLevel && (
+                                <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
+                                  {eventBusiness.sponsorshipLevel} Sponsor
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Render Sponsor Organizations */}
+                          {sponsorOrganizations.map((eventOrganization) => (
+                            <TouchableOpacity
+                              key={`organization-${eventOrganization.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleOrganizationPress(eventOrganization)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventOrganization.organization?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventOrganization.organization?.name}
+                              </Text>
+                              {eventOrganization.sponsorshipLevel && (
+                                <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
+                                  {eventOrganization.sponsorshipLevel} Sponsor
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    );
+                  })()}
+
+                  {/* Event Vendors Section (showing event vendors in activity view) */}
+                  {(() => {
+                    const vendorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor !== true);
+                    const vendorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor !== true);
+                    const totalVendors = vendorBusinesses.length + vendorOrganizations.length;
+                    
+                    return totalVendors > 0 && (
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
+                          🛍️ Vendors ({totalVendors})
+                        </Text>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          style={{ marginBottom: 10 }}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                        >
+                          {/* Render Vendor Businesses */}
+                          {vendorBusinesses.map((eventBusiness) => (
+                            <TouchableOpacity
+                              key={`business-${eventBusiness.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleBusinessPress(eventBusiness)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventBusiness.business?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventBusiness.business.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventBusiness.business?.name}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
+                                Vendor
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Render Vendor Organizations */}
+                          {vendorOrganizations.map((eventOrganization) => (
+                            <TouchableOpacity
+                              key={`organization-${eventOrganization.id}`}
+                              style={{ 
+                                backgroundColor: 'white', 
+                                padding: 15, 
+                                borderRadius: 12, 
+                                marginRight: 12,
+                                width: 120,
+                                alignItems: 'center',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                                elevation: 3,
+                              }}
+                              onPress={() => handleOrganizationPress(eventOrganization)}
+                            >
+                              <View style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 8, 
+                                backgroundColor: '#F3F4F6', 
+                                justifyContent: 'center', 
+                                alignItems: 'center',
+                                marginBottom: 10
+                              }}>
+                                {eventOrganization.organization?.logoUrl ? (
+                                  <Image 
+                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
+                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
+                                {eventOrganization.organization?.name}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
+                                Vendor
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    );
+                  })()}
+                </View>
+              </View>
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                <Text style={{ fontSize: 16, color: '#6B7280' }}>
+                  Loading...
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* RSVP Footer */}
+          <View style={{ 
+            position: 'absolute', 
+            bottom: 0, 
+            left: 0, 
+            right: 0, 
+            backgroundColor: 'white', 
+            borderTopWidth: 1, 
+            borderTopColor: '#E5E7EB',
+            paddingHorizontal: 20,
+            paddingVertical: 15,
+            paddingBottom: 35 // Extra padding for safe area
+          }}>
+            {modalView === 'event' && selectedEvent ? (
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: '#D29507', 
+                  paddingVertical: 15, 
+                  borderRadius: 8, 
+                  alignItems: 'center'
+                }}
+                onPress={() => handleEventRSVP(selectedEvent.id, 'attending')}
+              >
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                  RSVP for Event
+                </Text>
+              </TouchableOpacity>
+            ) : modalView === 'activity' && selectedActivity ? (
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: '#D29507', 
+                  paddingVertical: 15, 
+                  borderRadius: 8, 
+                  alignItems: 'center'
+                }}
+                onPress={() => {
+                  console.log('Activity RSVP:', selectedActivity.id, 'attending');
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                  RSVP for Activity
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Speaker Modal */}
+      <SpeakerModal
+        visible={speakerModalVisible}
+        speaker={selectedSpeaker}
+        onClose={() => setSpeakerModalVisible(false)}
+      />
+
+      {/* Business Modal */}
+      <BusinessModal
+        visible={businessModalVisible}
+        business={selectedBusiness}
+        contacts={selectedBusinessContacts}
+        onClose={() => setBusinessModalVisible(false)}
+      />
+
+      {/* Organization Modal */}
+      <OrganizationModal
+        visible={organizationModalVisible}
+        organization={selectedOrganization}
+        onClose={() => setOrganizationModalVisible(false)}
       />
     </SafeAreaView>
   );
@@ -577,13 +1718,13 @@ const MainApp: React.FC = () => {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'events':
-        return <EventsScreen />;
+        return <EventsScreen setCurrentScreen={setCurrentScreen} />;
       case 'profile':
         return <ProfileScreen />;
       case 'chat':
         return <ChatScreen />;
       default:
-        return <EventsScreen />;
+        return <EventsScreen setCurrentScreen={setCurrentScreen} />;
     }
   };
 

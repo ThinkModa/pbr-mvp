@@ -19,7 +19,6 @@ import { SpeakersService, EventSpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import { useAuth } from '../contexts/MockAuthContext';
-import ActivityModal from './ActivityModal';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
@@ -29,14 +28,13 @@ interface EventModalProps {
   event: EventWithActivities | null;
   onClose: () => void;
   onRSVP: (eventId: string, status: 'attending' | 'not_attending' | null) => void;
+  onActivityPress: (activity: any) => void;
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP }) => {
+const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP, onActivityPress }) => {
   const { user } = useAuth();
-  const [selectedActivity, setSelectedActivity] = useState<any>(null);
-  const [activityModalVisible, setActivityModalVisible] = useState(false);
   const [userRSVP, setUserRSVP] = useState<RSVPStatus | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -309,8 +307,16 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   };
 
   const handleActivityPress = (activity: any) => {
-    setSelectedActivity(activity);
-    setActivityModalVisible(true);
+    console.log('🎯 Activity clicked in EventModal:', activity);
+    console.log('🎯 Activity title:', activity?.title);
+    console.log('🎯 onActivityPress prop exists:', !!onActivityPress);
+    console.log('🎯 Calling onActivityPress...');
+    if (onActivityPress) {
+      onActivityPress(activity);
+      console.log('🎯 onActivityPress called successfully');
+    } else {
+      console.log('🎯 ERROR: onActivityPress prop is missing!');
+    }
   };
 
 
@@ -320,6 +326,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         visible={visible}
         animationType="slide"
         onRequestClose={onClose}
+        presentationStyle="pageSheet"
       >
         <SafeAreaView style={styles.container}>
           {/* Header */}
@@ -327,11 +334,11 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
-            <View style={styles.headerActions}>
-              <TouchableOpacity style={styles.shareButton}>
-                <Text style={styles.shareButtonText}>↗</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.shareButton}>
+              <Text style={styles.shareButtonText}>↗</Text>
+            </TouchableOpacity>
+          </View>
           </View>
 
           <ScrollView 
@@ -424,7 +431,10 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                     <TouchableOpacity
                       key={activity.id}
                       style={styles.activityCard}
-                      onPress={() => handleActivityPress(activity)}
+                      onPress={() => {
+                        console.log('🎯 Activity TouchableOpacity pressed:', activity.title);
+                        handleActivityPress(activity);
+                      }}
                     >
                       <View style={styles.activityHeader}>
                         <View style={styles.activityInfo}>
@@ -707,20 +717,6 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         </SafeAreaView>
       </Modal>
 
-      {/* Activity Modal */}
-      <ActivityModal
-        visible={activityModalVisible}
-        activity={selectedActivity}
-        onClose={() => setActivityModalVisible(false)}
-        onRSVP={async (activityId: string, status: 'attending' | 'not_attending') => {
-          try {
-            await RSVPService.createActivityRSVP(activityId, user?.id || '', status);
-            console.log('Activity RSVP successful:', activityId, status);
-          } catch (error) {
-            console.error('Activity RSVP failed:', error);
-          }
-        }}
-      />
 
       {/* Speaker Modal */}
       <SpeakerModal

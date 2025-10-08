@@ -324,4 +324,34 @@ export class RSVPService {
 
     console.log('✅ Activity RSVP deleted');
   }
+
+  // Get all RSVPs for a specific activity
+  static async getActivityRSVPs(activityId: string): Promise<ActivityRSVP[]> {
+    console.log('Getting activity RSVPs:', { activityId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_rsvps?activity_id=eq.${activityId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error getting activity RSVPs:', errorText);
+      throw new Error(`Failed to get activity RSVPs: ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Get activity RSVPs response text:', responseText);
+    
+    if (!responseText.trim()) {
+      console.log('✅ No activity RSVPs found (empty response)');
+      return [];
+    }
+    
+    const rsvps = JSON.parse(responseText);
+    console.log('✅ Retrieved activity RSVPs:', rsvps);
+    return rsvps;
+  }
 }

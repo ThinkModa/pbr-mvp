@@ -9,10 +9,17 @@ import {
   Dimensions,
   SafeAreaView,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { RSVPService } from '../services/rsvpService';
 import { SpeakersService, ActivitySpeaker } from '../services/speakersService';
+import { BusinessesService, EventBusiness } from '../services/businessesService';
+import { OrganizationsService, EventOrganization } from '../services/organizationsService';
+import { EventsService } from '../services/eventsService';
+import { useAuth } from '../contexts/MockAuthContext';
 import SpeakerModal from './SpeakerModal';
+import BusinessModal from './BusinessModal';
+import OrganizationModal from './OrganizationModal';
 
 interface Activity {
   id: string;
@@ -24,28 +31,96 @@ interface Activity {
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
+  event_id: string;
+}
+
+interface Event {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  location: { name: string } | null;
 }
 
 interface ActivityModalProps {
   visible: boolean;
   activity: Activity | null;
+  event: Event | null;
   onClose: () => void;
   onRSVP: (activityId: string, status: 'attending' | 'not_attending') => void;
+  onBackToEvent?: () => void; // Optional callback to go back to event
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClose, onRSVP }) => {
+const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event, onClose, onRSVP, onBackToEvent }) => {
+  const { user } = useAuth();
+  
+  console.log('🎯 ActivityModal render:', { 
+    visible, 
+    activity: activity?.title, 
+    event: event?.title,
+    activityId: activity?.id,
+    eventId: event?.id
+  });
+  
+  if (visible) {
+    console.log('🎯 ActivityModal is visible!');
+    console.log('🎯 ActivityModal props:', {
+      visible,
+      hasActivity: !!activity,
+      hasEvent: !!event,
+      activityTitle: activity?.title,
+      eventTitle: event?.title
+    });
+  }
+  
+  // Debug: Check if we should render the modal
+  if (visible && !activity) {
+    console.log('🎯 WARNING: ActivityModal is visible but activity is null!');
+  }
+  
+  // State for data
   const [speakers, setSpeakers] = useState<ActivitySpeaker[]>([]);
+  const [businesses, setBusinesses] = useState<EventBusiness[]>([]);
+  const [organizations, setOrganizations] = useState<EventOrganization[]>([]);
+  const [nextActivity, setNextActivity] = useState<Activity | null>(null);
+  const [activityRSVPs, setActivityRSVPs] = useState<any[]>([]);
+  
+  // State for modals
   const [selectedSpeaker, setSelectedSpeaker] = useState<any>(null);
+  const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
+  const [selectedOrganization, setSelectedOrganization] = useState<any>(null);
+  const [selectedBusinessContacts, setSelectedBusinessContacts] = useState<any[]>([]);
   const [speakerModalVisible, setSpeakerModalVisible] = useState(false);
+  const [businessModalVisible, setBusinessModalVisible] = useState(false);
+  const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
+  
+  // State for loading
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Load activity speakers when modal opens
+  // Load all data when modal opens
   useEffect(() => {
-    if (visible && activity) {
-      loadActivitySpeakers();
+    if (visible && activity && event) {
+      loadAllData();
     }
-  }, [visible, activity]);
+  }, [visible, activity, event]);
+
+  const loadAllData = async () => {
+    if (!activity || !event) return;
+    
+    try {
+      await Promise.all([
+        loadActivitySpeakers(),
+        loadEventBusinesses(),
+        loadEventOrganizations(),
+        loadNextActivity(),
+        loadActivityRSVPs()
+      ]);
+    } catch (error) {
+      console.error('Error loading activity data:', error);
+    }
+  };
 
   const loadActivitySpeakers = async () => {
     if (!activity) return;
@@ -58,15 +133,87 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClos
     }
   };
 
+  const loadEventBusinesses = async () => {
+    if (!event) return;
+    
+    try {
+      const eventBusinesses = await BusinessesService.getEventBusinesses(event.id);
+      setBusinesses(eventBusinesses);
+    } catch (error) {
+      console.error('Error loading event businesses:', error);
+    }
+  };
+
+  const loadEventOrganizations = async () => {
+    if (!event) return;
+    
+    try {
+      const eventOrganizations = await OrganizationsService.getEventOrganizations(event.id);
+      setOrganizations(eventOrganizations);
+    } catch (error) {
+      console.error('Error loading event organizations:', error);
+    }
+  };
+
+  const loadNextActivity = async () => {
+    if (!activity || !event) return;
+    
+    try {
+      // Get all activities for this event and find the next one after current activity
+      const allActivities = await EventsService.getEventActivities(event.id);
+      const currentIndex = allActivities.findIndex(a => a.id === activity.id);
+      if (currentIndex >= 0 && currentIndex < allActivities.length - 1) {
+        setNextActivity(allActivities[currentIndex + 1]);
+      }
+    } catch (error) {
+      console.error('Error loading next activity:', error);
+    }
+  };
+
+  const loadActivityRSVPs = async () => {
+    if (!activity) return;
+    
+    try {
+      // Load RSVPs for this specific activity
+      const rsvps = await RSVPService.getActivityRSVPs(activity.id);
+      setActivityRSVPs(rsvps);
+    } catch (error) {
+      console.error('Error loading activity RSVPs:', error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadAllData();
+    setRefreshing(false);
+  };
+
   const handleSpeakerPress = (speaker: ActivitySpeaker) => {
     setSelectedSpeaker(speaker.speaker);
     setSpeakerModalVisible(true);
   };
 
-  if (!activity) return null;
+  const handleBusinessPress = (business: EventBusiness) => {
+    setSelectedBusiness(business.business);
+    setSelectedBusinessContacts(business.contacts || []);
+    setBusinessModalVisible(true);
+  };
 
-  const startDate = new Date(activity.start_time + 'Z');
-  const endDate = new Date(activity.end_time + 'Z');
+  const handleOrganizationPress = (organization: EventOrganization) => {
+    setSelectedOrganization(organization.organization);
+    setOrganizationModalVisible(true);
+  };
+
+  const handleNextActivityPress = () => {
+    if (nextActivity) {
+      // Close current modal and open next activity modal
+      onClose();
+      // This would need to be handled by parent component
+    }
+  };
+
+  const startDate = activity ? new Date(activity.start_time + 'Z') : new Date();
+  const endDate = activity ? new Date(activity.end_time + 'Z') : new Date();
   
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', {
@@ -87,21 +234,40 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClos
   };
 
   const handleRSVP = async (status: 'attending' | 'not_attending') => {
+    if (!user || !activity) return;
+    
     try {
-      await RSVPService.createActivityRSVP(activity.id, 'mock-user-id', status);
+      await RSVPService.createActivityRSVP(activity.id, user.id, status);
       onRSVP(activity.id, status);
+      // Reload RSVPs to show updated count
+      await loadActivityRSVPs();
     } catch (error) {
       console.error('Activity RSVP failed:', error);
     }
   };
 
+  // Helper functions for filtering sponsors vs vendors
+  const getSponsors = () => {
+    const sponsorBusinesses = businesses.filter(b => b.business?.isSponsor);
+    const sponsorOrganizations = organizations.filter(o => o.organization?.isSponsor);
+    return [...sponsorBusinesses, ...sponsorOrganizations];
+  };
+
+  const getVendors = () => {
+    const vendorBusinesses = businesses.filter(b => !b.business?.isSponsor);
+    const vendorOrganizations = organizations.filter(o => !o.organization?.isSponsor);
+    return [...vendorBusinesses, ...vendorOrganizations];
+  };
+
   return (
     <>
-    <Modal
-      visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+        <Modal
+          visible={visible}
+          animationType="slide"
+          onRequestClose={onClose}
+          presentationStyle="pageSheet"
+          transparent={false}
+        >
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -115,66 +281,78 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClos
           </View>
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#3B82F6"
+              colors={['#3B82F6']}
+              progressBackgroundColor="#FFFFFF"
+            />
+          }
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Event Title Banner */}
+          {event && (
+            <View style={styles.eventBanner}>
+              <Text style={styles.eventBannerText}>📅 {event.title}</Text>
+            </View>
+          )}
+
           {/* Activity Details */}
+          {!activity ? (
+            <View style={styles.detailsContainer}>
+              <Text style={styles.loadingText}>Loading activity details...</Text>
+            </View>
+          ) : (
           <View style={styles.detailsContainer}>
-            {/* Title and Required Badge */}
+            {/* Activity Title */}
             <View style={styles.titleSection}>
-              <View style={styles.titleRow}>
-                <Text style={styles.activityTitle}>{activity.title}</Text>
-                {activity.is_required && (
-                  <View style={styles.requiredBadge}>
-                    <Text style={styles.requiredBadgeText}>Required</Text>
-                  </View>
-                )}
-              </View>
+              <Text style={styles.activityTitle}>{activity.title}</Text>
+              {activity.is_required && (
+                <View style={styles.requiredBadge}>
+                  <Text style={styles.requiredBadgeText}>Required</Text>
+                </View>
+              )}
             </View>
 
             {/* Date and Time */}
             <View style={styles.dateTimeSection}>
-              <View style={styles.dateTimeItem}>
-                <Text style={styles.dateTimeLabel}>Start</Text>
-                <Text style={styles.dateTimeValue}>
-                  {formatDate(startDate)} at {formatTime(startDate)}
-                </Text>
-              </View>
-              <View style={styles.dateTimeItem}>
-                <Text style={styles.dateTimeLabel}>End</Text>
-                <Text style={styles.dateTimeValue}>
-                  {formatDate(endDate)} at {formatTime(endDate)}
-                </Text>
-              </View>
+              <Text style={styles.dateTimeText}>
+                📅 {formatDate(startDate)} • {formatTime(startDate)}
+              </Text>
             </View>
 
             {/* Location */}
             {activity.location?.name && (
               <View style={styles.locationSection}>
-                <View style={styles.locationContainer}>
-                  <Text style={styles.locationIcon}>📍</Text>
-                  <Text style={styles.locationText}>{activity.location.name}</Text>
-                </View>
+                <Text style={styles.locationText}>
+                  📍 {activity.location.name}
+                </Text>
               </View>
             )}
 
             {/* Activity Info */}
             <View style={styles.infoSection}>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Capacity</Text>
-                <Text style={styles.infoValue}>
-                  {activity.current_rsvps || 0} / {activity.max_capacity || '∞'} attendees
-                </Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Duration</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>⏱️ Duration</Text>
                 <Text style={styles.infoValue}>
                   {Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60))} minutes
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>👥 Capacity</Text>
+                <Text style={styles.infoValue}>
+                  {activity.current_rsvps || 0} / {activity.max_capacity || '∞'} attendees
                 </Text>
               </View>
             </View>
 
             {/* Description */}
             <View style={styles.descriptionSection}>
-              <Text style={styles.sectionTitle}>About this activity</Text>
               <Text style={styles.description}>
                 {activity.description || 'No description available.'}
               </Text>
@@ -183,7 +361,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClos
             {/* Speakers Section */}
             {speakers.length > 0 && (
               <View style={styles.speakersSection}>
-                <Text style={styles.sectionTitle}>Speakers for this session ({speakers.length})</Text>
+                <Text style={styles.sectionTitle}>👥 Speakers ({speakers.length})</Text>
                 <ScrollView 
                   horizontal 
                   showsHorizontalScrollIndicator={false}
@@ -225,50 +403,168 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, onClos
               </View>
             )}
 
-            {/* Additional Info */}
-            <View style={styles.additionalInfoSection}>
-              <Text style={styles.sectionTitle}>Additional Information</Text>
-              <View style={styles.infoCard}>
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoRowLabel}>Activity Type</Text>
-                  <Text style={styles.infoRowValue}>
-                    {activity.is_required ? 'Required Activity' : 'Optional Activity'}
-                  </Text>
-                </View>
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoRowLabel}>RSVP Status</Text>
-                  <Text style={styles.infoRowValue}>Open</Text>
-                </View>
+            {/* Sponsors Section */}
+            {getSponsors().length > 0 && (
+              <View style={styles.sponsorsSection}>
+                <Text style={styles.sectionTitle}>🏢 Sponsors ({getSponsors().length})</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.sponsorsScrollView}
+                  contentContainerStyle={styles.sponsorsScrollContent}
+                >
+                  {getSponsors().map((item, index) => (
+                    <TouchableOpacity
+                      key={`sponsor-${index}`}
+                      style={styles.sponsorCard}
+                      onPress={() => {
+                        if ('business' in item) {
+                          handleBusinessPress(item as EventBusiness);
+                        } else {
+                          handleOrganizationPress(item as EventOrganization);
+                        }
+                      }}
+                    >
+                      <View style={styles.sponsorLogo}>
+                        {('business' in item && item.business?.logoUrl) ? (
+                          <Image 
+                            source={{ uri: item.business.logoUrl }} 
+                            style={styles.sponsorLogoImage} 
+                          />
+                        ) : ('organization' in item && item.organization?.logoUrl) ? (
+                          <Image 
+                            source={{ uri: item.organization.logoUrl }} 
+                            style={styles.sponsorLogoImage} 
+                          />
+                        ) : (
+                          <View style={styles.sponsorLogoPlaceholder}>
+                            <Text style={styles.sponsorLogoText}>
+                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.sponsorName} numberOfLines={1}>
+                        {'business' in item ? item.business?.name : item.organization?.name}
+                      </Text>
+                      <Text style={styles.sponsorLevel} numberOfLines={1}>
+                        {('business' in item ? item.sponsorshipLevel : item.role) || 'Sponsor'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
-            </View>
+            )}
+
+            {/* Vendors Section */}
+            {getVendors().length > 0 && (
+              <View style={styles.vendorsSection}>
+                <Text style={styles.sectionTitle}>🛍️ Vendors ({getVendors().length})</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.vendorsScrollView}
+                  contentContainerStyle={styles.vendorsScrollContent}
+                >
+                  {getVendors().map((item, index) => (
+                    <TouchableOpacity
+                      key={`vendor-${index}`}
+                      style={styles.vendorCard}
+                      onPress={() => {
+                        if ('business' in item) {
+                          handleBusinessPress(item as EventBusiness);
+                        } else {
+                          handleOrganizationPress(item as EventOrganization);
+                        }
+                      }}
+                    >
+                      <View style={styles.vendorLogo}>
+                        {('business' in item && item.business?.logoUrl) ? (
+                          <Image 
+                            source={{ uri: item.business.logoUrl }} 
+                            style={styles.vendorLogoImage} 
+                          />
+                        ) : ('organization' in item && item.organization?.logoUrl) ? (
+                          <Image 
+                            source={{ uri: item.organization.logoUrl }} 
+                            style={styles.vendorLogoImage} 
+                          />
+                        ) : (
+                          <View style={styles.vendorLogoPlaceholder}>
+                            <Text style={styles.vendorLogoText}>
+                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.vendorName} numberOfLines={1}>
+                        {'business' in item ? item.business?.name : item.organization?.name}
+                      </Text>
+                      <Text style={styles.vendorType} numberOfLines={1}>
+                        {('business' in item ? item.role : item.role) || 'Vendor'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Next Activity Section */}
+            {nextActivity && (
+              <View style={styles.nextActivitySection}>
+                <Text style={styles.sectionTitle}>📅 Next Event</Text>
+                <TouchableOpacity 
+                  style={styles.nextActivityCard}
+                  onPress={handleNextActivityPress}
+                >
+                  <Text style={styles.nextActivityTitle}>{nextActivity.title}</Text>
+                  <Text style={styles.nextActivityDateTime}>
+                    📅 {formatDate(new Date(nextActivity.start_time + 'Z'))} • {formatTime(new Date(nextActivity.start_time + 'Z'))}
+                  </Text>
+                  {nextActivity.location?.name && (
+                    <Text style={styles.nextActivityLocation}>
+                      📍 {nextActivity.location.name}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
+          )}
         </ScrollView>
 
-        {/* RSVP Footer */}
+        {/* Action Footer */}
         <View style={styles.footer}>
-          <View style={styles.rsvpButtons}>
+          <View style={styles.actionButtons}>
             <TouchableOpacity
-              style={[styles.rsvpButton, styles.notGoingButton]}
-              onPress={() => handleRSVP('not_attending')}
-            >
-              <Text style={styles.notGoingButtonText}>Not Going</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.rsvpButton, styles.goingButton]}
+              style={[styles.actionButton, styles.rsvpButton]}
               onPress={() => handleRSVP('attending')}
             >
-              <Text style={styles.goingButtonText}>RSVP Going</Text>
+              <Text style={styles.rsvpButtonText}>RSVP for Activity</Text>
             </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
     </Modal>
 
-    {/* Speaker Modal */}
+    {/* Modals */}
     <SpeakerModal
       visible={speakerModalVisible}
       speaker={selectedSpeaker}
       onClose={() => setSpeakerModalVisible(false)}
+    />
+    
+    <BusinessModal
+      visible={businessModalVisible}
+      business={selectedBusiness}
+      contacts={selectedBusinessContacts}
+      onClose={() => setBusinessModalVisible(false)}
+    />
+    
+    <OrganizationModal
+      visible={organizationModalVisible}
+      organization={selectedOrganization}
+      onClose={() => setOrganizationModalVisible(false)}
     />
   </>
   );
@@ -321,114 +617,70 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
+  },
+  // Event Banner
+  eventBanner: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  eventBannerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  // Content
   detailsContainer: {
     padding: 20,
   },
   titleSection: {
-    marginBottom: 24,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    marginBottom: 20,
   },
   activityTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#111827',
-    flex: 1,
+    marginBottom: 8,
   },
   requiredBadge: {
     backgroundColor: '#FEF3C7',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   requiredBadgeText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#92400E',
   },
+  // Date and Time
   dateTimeSection: {
-    marginBottom: 24,
-    gap: 16,
+    marginBottom: 16,
   },
-  dateTimeItem: {
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-  },
-  dateTimeLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
-  },
-  dateTimeValue: {
+  dateTimeText: {
     fontSize: 16,
-    color: '#111827',
+    color: '#4B5563',
+    fontWeight: '500',
   },
+  // Location
   locationSection: {
-    marginBottom: 24,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-  },
-  locationIcon: {
-    fontSize: 16,
+    marginBottom: 20,
   },
   locationText: {
     fontSize: 16,
-    color: '#111827',
+    color: '#4B5563',
     fontWeight: '500',
   },
+  // Info Section
   infoSection: {
-    flexDirection: 'row',
-    gap: 16,
     marginBottom: 24,
-  },
-  infoItem: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-  },
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  descriptionSection: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  description: {
-    fontSize: 16,
-    color: '#4B5563',
-    lineHeight: 24,
-  },
-  additionalInfoSection: {
-    marginBottom: 32,
-  },
-  infoCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
+    gap: 12,
   },
   infoRow: {
     flexDirection: 'row',
@@ -436,50 +688,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
-  infoRowLabel: {
+  infoLabel: {
     fontSize: 14,
     color: '#6B7280',
-  },
-  infoRowValue: {
-    fontSize: 14,
     fontWeight: '500',
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#111827',
   },
-  footer: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: 'white',
+  // Description
+  descriptionSection: {
+    marginBottom: 32,
   },
-  rsvpButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rsvpButton: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  notGoingButton: {
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  notGoingButtonText: {
+  description: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    color: '#4B5563',
+    lineHeight: 24,
   },
-  goingButton: {
-    backgroundColor: '#111827',
+  // Section Titles
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
   },
-  goingButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
-  // Speakers Section Styles
+  // Speakers Section
   speakersSection: {
     marginBottom: 24,
   },
@@ -537,6 +772,169 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  // Sponsors Section
+  sponsorsSection: {
+    marginBottom: 24,
+  },
+  sponsorsScrollView: {
+    marginTop: 12,
+  },
+  sponsorsScrollContent: {
+    paddingRight: 20,
+  },
+  sponsorCard: {
+    width: 120,
+    marginRight: 16,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sponsorLogo: {
+    marginBottom: 8,
+  },
+  sponsorLogoImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  sponsorLogoPlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sponsorLogoText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+  },
+  sponsorName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  sponsorLevel: {
+    fontSize: 12,
+    color: '#374151',
+    textAlign: 'center',
+  },
+  // Vendors Section
+  vendorsSection: {
+    marginBottom: 24,
+  },
+  vendorsScrollView: {
+    marginTop: 12,
+  },
+  vendorsScrollContent: {
+    paddingRight: 20,
+  },
+  vendorCard: {
+    width: 120,
+    marginRight: 16,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  vendorLogo: {
+    marginBottom: 8,
+  },
+  vendorLogoImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  vendorLogoPlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F59E0B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vendorLogoText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+  },
+  vendorName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  vendorType: {
+    fontSize: 12,
+    color: '#374151',
+    textAlign: 'center',
+  },
+  // Next Activity Section
+  nextActivitySection: {
+    marginBottom: 24,
+  },
+  nextActivityCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  nextActivityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  nextActivityDateTime: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginBottom: 4,
+  },
+  nextActivityLocation: {
+    fontSize: 14,
+    color: '#4B5563',
+  },
+  // Footer
+  footer: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  rsvpButton: {
+    backgroundColor: '#111827',
+  },
+  rsvpButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingVertical: 40,
   },
 });
 
