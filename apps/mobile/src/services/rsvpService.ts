@@ -2,13 +2,27 @@
 // Uses REST API calls to avoid Supabase client compatibility issues with Expo Go
 // Connects directly to live Supabase database
 
-export type RSVPStatus = 'attending' | 'not_attending' | 'maybe' | 'waitlist';
+import { ProfileCompleteness } from './profileService';
+
+export type RSVPStatus = 'attending' | 'not_attending' | 'maybe' | 'waitlist' | 'pending';
+
+export class ProfileIncompleteError extends Error {
+  public readonly profileCompleteness: ProfileCompleteness;
+  public readonly statusCode: number = 422;
+
+  constructor(profileCompleteness: ProfileCompleteness) {
+    super('Profile must be complete before RSVP');
+    this.name = 'ProfileIncompleteError';
+    this.profileCompleteness = profileCompleteness;
+  }
+}
 
 export interface EventRSVP {
   id: string;
   user_id: string;
   event_id: string;
   status: RSVPStatus;
+  track_id?: string;
   guest_count: number;
   dietary_restrictions?: string;
   accessibility_needs?: string;
@@ -56,28 +70,81 @@ export class RSVPService {
     };
   }
 
-  // Create or update event RSVP (upsert)
-  static async createEventRSVP(eventId: string, userId: string, status: RSVPStatus): Promise<EventRSVP> {
-    console.log('Creating/updating event RSVP:', { eventId, userId, status });
+  // Create a pending RSVP (for track selection)
+  static async createPendingRSVP(eventId: string, userId: string): Promise<EventRSVP> {
+    console.log('Creating pending RSVP:', { eventId, userId });
     
     // First, try to get existing RSVP
     const existingRSVP = await this.getUserEventRSVP(eventId, userId);
     
     if (existingRSVP) {
-      // Update existing RSVP
-      return await this.updateEventRSVP(existingRSVP.id, status);
+      // Update existing RSVP to pending
+      return await this.updateEventRSVP(existingRSVP.id, 'pending');
     } else {
-      // Create new RSVP
+      // Create new pending RSVP
       const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
           event_id: eventId,
           user_id: userId,
-          status: status,
+          status: 'pending',
           guest_count: 1,
           is_approved: true,
         }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error creating pending RSVP:', errorText);
+        throw new Error(`Failed to create pending RSVP: ${errorText}`);
+      }
+
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+      
+      if (!responseText.trim()) {
+        console.log('✅ Pending RSVP created (empty response)');
+        return { id: 'created', event_id: eventId, user_id: userId, status: 'pending' };
+      }
+      
+      const rsvp = JSON.parse(responseText);
+      console.log('✅ Pending RSVP created:', rsvp);
+      return rsvp;
+    }
+  }
+
+  // Create or update event RSVP (upsert)
+  static async createEventRSVP(eventId: string, userId: string, status: RSVPStatus, trackId?: string): Promise<EventRSVP> {
+    console.log('Creating/updating event RSVP:', { eventId, userId, status, trackId });
+    
+    // Note: Profile completeness check is now handled in MainApp before calling this method
+    
+    // First, try to get existing RSVP
+    const existingRSVP = await this.getUserEventRSVP(eventId, userId);
+    
+    if (existingRSVP) {
+      // Update existing RSVP
+      return await this.updateEventRSVP(existingRSVP.id, status, trackId);
+    } else {
+      // Create new RSVP
+      const rsvpData: any = {
+        event_id: eventId,
+        user_id: userId,
+        status: status,
+        guest_count: 1,
+        is_approved: true,
+      };
+      
+      // Add track_id if provided
+      if (trackId) {
+        rsvpData.track_id = trackId;
+      }
+      
+      const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(rsvpData),
       });
 
     if (!response.ok) {
@@ -101,17 +168,43 @@ export class RSVPService {
     }
   }
 
+  // Confirm pending RSVP with track selection
+  static async confirmPendingRSVP(eventId: string, userId: string, trackId: string): Promise<EventRSVP> {
+    console.log('Confirming pending RSVP with track:', { eventId, userId, trackId });
+    
+    // Get existing pending RSVP
+    const existingRSVP = await this.getUserEventRSVP(eventId, userId);
+    
+    if (!existingRSVP) {
+      throw new Error('No pending RSVP found');
+    }
+    
+    if (existingRSVP.status !== 'pending') {
+      throw new Error('RSVP is not in pending status');
+    }
+    
+    // Update to attending with track selection
+    return await this.updateEventRSVP(existingRSVP.id, 'attending', trackId);
+  }
+
   // Update existing event RSVP
-  static async updateEventRSVP(rsvpId: string, status: RSVPStatus): Promise<EventRSVP> {
-    console.log('Updating event RSVP:', { rsvpId, status });
+  static async updateEventRSVP(rsvpId: string, status: RSVPStatus, trackId?: string): Promise<EventRSVP> {
+    console.log('Updating event RSVP:', { rsvpId, status, trackId });
+    
+    const updateData: any = {
+      status: status,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Add track_id if provided
+    if (trackId) {
+      updateData.track_id = trackId;
+    }
     
     const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps?id=eq.${rsvpId}`, {
       method: 'PATCH',
       headers: this.getHeaders(),
-      body: JSON.stringify({
-        status: status,
-        updated_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(updateData),
     });
 
     if (!response.ok) {

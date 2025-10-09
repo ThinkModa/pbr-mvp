@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+// import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
 import { useAuth } from '../contexts/MockAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
@@ -25,11 +26,17 @@ import { OrganizationsService, EventOrganization } from '../services/organizatio
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
 import { RealTimeService } from '../services/realTimeService';
 import { NotificationService } from '../services/notificationService';
+import { ProfileService } from '../services/profileService';
+import { TrackService } from '../services/trackService';
 import EventModal from './EventModal';
 import ActivityModal from './ActivityModal';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
+import ProfileCompletionModal from './ProfileCompletionModal';
+import TrackSelectionContent from './TrackSelectionContent';
+import AttendeesContent from './AttendeesContent';
+import AvatarComponent from './AvatarComponent';
 
 // Events Screen
 const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
@@ -40,7 +47,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   const [error, setError] = useState<string | null>(null);
   // Modal state management - single modal with different views
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalView, setModalView] = useState<'event' | 'activity'>('event');
+  const [modalView, setModalView] = useState<'event' | 'activity' | 'track' | 'attendees'>('event');
   const [selectedEvent, setSelectedEvent] = useState<EventWithActivities | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [userRSVPs, setUserRSVPs] = useState<Record<string, RSVPStatus>>({});
@@ -57,9 +64,28 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   const [eventOrganizations, setEventOrganizations] = useState<EventOrganization[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
   const [selectedOrganization, setSelectedOrganization] = useState<any>(null);
+  
+  // Profile completion modal state
+  const [profileCompletionModalVisible, setProfileCompletionModalVisible] = useState(false);
+  const [profileCompleteness, setProfileCompleteness] = useState<any>(null);
+  
+  const [tempSelectedEvent, setTempSelectedEvent] = useState<any>(null);
+  const [userSelectedTracks, setUserSelectedTracks] = useState<{[eventId: string]: string}>({});
+  const [filteredActivities, setFilteredActivities] = useState<any[]>([]);
+  const [selectedTrackName, setSelectedTrackName] = useState<string>('');
   const [selectedBusinessContacts, setSelectedBusinessContacts] = useState<any[]>([]);
   const [businessModalVisible, setBusinessModalVisible] = useState(false);
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
+
+  // Re-check profile completeness when returning from profile screen
+  useEffect(() => {
+    if (tempSelectedEvent && !profileCompletionModalVisible) {
+      // User returned from profile screen, re-check if they can now RSVP
+      console.log('User returned from profile screen, re-checking profile completeness');
+      // Clear the temp event since we're back on events screen
+      setTempSelectedEvent(null);
+    }
+  }, [tempSelectedEvent, profileCompletionModalVisible]);
 
   // Debug logging
   console.log('MainApp render:', { 
@@ -67,7 +93,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     modalView,
     event: selectedEvent?.title, 
     selectedActivity: selectedActivity?.title,
-    selectedActivityId: selectedActivity?.id
+    selectedActivityId: selectedActivity?.id,
+    profileCompletionModalVisible,
+    profileCompleteness: profileCompleteness !== null,
+    tempSelectedEvent: tempSelectedEvent?.title
   });
   
   // Additional debugging for modal state
@@ -151,32 +180,81 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     setSelectedEvent(event);
     setModalView('event');
     setModalVisible(true);
+    // Always show all activities (don't filter by track)
+    setFilteredActivities(event.activities || []);
+    setSelectedTrackName('');
     // Load speakers, businesses, and organizations for this event
     loadEventSpeakers(event.id);
     loadEventBusinesses(event.id);
     loadEventOrganizations(event.id);
+    // Load user's selected track for this event (for display purposes only)
+    loadUserSelectedTrack(event.id);
     console.log('🎯 Event view should be visible now');
   };
 
   const handleEventRSVP = async (eventId: string, status: 'attending' | 'not_attending' | null) => {
     console.log('Event RSVP:', eventId, status);
     
-    // Update local RSVP state
     if (user) {
-      setUserRSVPs(prev => {
+      // Make API call first, then update local state only on success
+      try {
         if (status === null) {
-          // Remove the RSVP
-          const newRSVPs = { ...prev };
-          delete newRSVPs[eventId];
-          return newRSVPs;
+          // Cancel RSVP - we'll need to get the RSVP ID first
+          const existingRSVP = await RSVPService.getUserEventRSVP(eventId, user.id);
+          if (existingRSVP) {
+            await RSVPService.deleteEventRSVP(existingRSVP.id);
+          }
+          // Update local state after successful deletion
+          setUserRSVPs(prev => {
+            const newRSVPs = { ...prev };
+            delete newRSVPs[eventId];
+            return newRSVPs;
+          });
         } else {
-          // Add or update the RSVP
-          return {
+          // Always check profile completeness fresh before creating RSVP
+          console.log('Checking profile completeness before RSVP...');
+          const profileCompleteness = await ProfileService.checkProfileCompleteness(user.id);
+          
+          if (!profileCompleteness.isComplete) {
+            console.log('Profile still incomplete after update, showing modal');
+            setProfileCompleteness(profileCompleteness);
+            setTempSelectedEvent(selectedEvent);
+            setProfileCompletionModalVisible(true);
+            setModalVisible(false);
+            setSelectedEvent(null);
+            return; // Don't proceed with RSVP
+          }
+          
+          // Check if event requires track selection
+          console.log('Checking if event requires track selection...');
+          const requiresTracks = await TrackService.eventRequiresTracks(eventId);
+          
+          if (requiresTracks && status === 'attending') {
+            console.log('Event requires track selection, creating pending RSVP');
+            // Create pending RSVP and switch to track view
+            await RSVPService.createPendingRSVP(eventId, user.id);
+            setUserRSVPs(prev => ({
+              ...prev,
+              [eventId]: 'pending'
+            }));
+            setModalView('track');
+            return;
+          }
+          
+          // No track selection required, proceed with normal RSVP
+          await RSVPService.createEventRSVP(eventId, user.id, status);
+          // Update local state after successful creation
+          setUserRSVPs(prev => ({
             ...prev,
             [eventId]: status
-          };
+          }));
         }
-      });
+        console.log('✅ RSVP updated successfully');
+      } catch (error) {
+        // For errors, log and show an alert
+        console.error('Error updating RSVP:', error);
+        Alert.alert('Error', 'Failed to update RSVP. Please try again.');
+      }
     }
     
     // Don't close the modal automatically - let user see the button state change
@@ -203,6 +281,97 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     // Load activity-specific speakers
     loadActivitySpeakers(activity.id);
     console.log('🎯 Activity view should be visible now - smooth transition');
+  };
+
+  const handleTrackSelected = async (trackId: string) => {
+    console.log('Track selected:', trackId);
+    if (!user || !selectedEvent) return;
+    
+    try {
+      // Confirm the pending RSVP with the selected track
+      await RSVPService.confirmPendingRSVP(selectedEvent.id, user.id, trackId);
+      
+      // Update the RSVP status from pending to attending
+      setUserRSVPs(prev => ({
+        ...prev,
+        [selectedEvent.id]: 'attending'
+      }));
+      
+      // Store the selected track for this event
+      setUserSelectedTracks(prev => ({
+        ...prev,
+        [selectedEvent.id]: trackId
+      }));
+      
+      // Load track name for display
+      const trackName = await getTrackName(trackId);
+      setSelectedTrackName(trackName);
+      
+      // Switch back to event view
+      setModalView('event');
+      
+      // Show success message
+      Alert.alert('Success', 'You have successfully selected your track and confirmed your RSVP!');
+    } catch (error) {
+      console.error('Error confirming track selection:', error);
+      Alert.alert('Error', 'Failed to confirm track selection. Please try again.');
+    }
+  };
+
+  // Load user's selected track for an event
+  const loadUserSelectedTrack = async (eventId: string) => {
+    if (!user) return;
+    
+    try {
+      const rsvp = await RSVPService.getUserEventRSVP(eventId, user.id);
+      if (rsvp && rsvp.track_id) {
+        setUserSelectedTracks(prev => ({
+          ...prev,
+          [eventId]: rsvp.track_id!
+        }));
+        
+        // Load track name for display
+        const trackName = await getTrackName(rsvp.track_id);
+        setSelectedTrackName(trackName);
+      } else {
+        // No track selected
+        setSelectedTrackName('');
+      }
+    } catch (error) {
+      console.error('Error loading user selected track:', error);
+      setSelectedTrackName('');
+    }
+  };
+
+  // Get track name by ID
+  const getTrackName = async (trackId: string): Promise<string> => {
+    try {
+      const tracks = await TrackService.getEventTracks(selectedEvent?.id || '');
+      const track = tracks.find(t => t.id === trackId);
+      return track?.name || 'Unknown Track';
+    } catch (error) {
+      console.error('Error getting track name:', error);
+      return 'Unknown Track';
+    }
+  };
+
+  // Filter activities by user's selected track
+  const getFilteredActivities = async (activities: any[], eventId: string) => {
+    const selectedTrackId = userSelectedTracks[eventId];
+    if (!selectedTrackId) {
+      // If no track selected, show all activities
+      return activities;
+    }
+    
+    try {
+      // Get activities for the selected track
+      const trackActivities = await TrackService.getTrackActivities(selectedTrackId);
+      return trackActivities;
+    } catch (error) {
+      console.error('Error filtering activities by track:', error);
+      // Fallback to showing all activities
+      return activities;
+    }
   };
 
   // Load speakers for the current event
@@ -334,11 +503,14 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
             {userRSVP && (
               <View style={[
                 styles.rsvpBadge, 
-                { backgroundColor: userRSVP === 'attending' ? '#10B981' : userRSVP === 'not_attending' ? '#EF4444' : '#F59E0B' }
+                { backgroundColor: userRSVP === 'attending' ? '#10B981' : 
+                                  userRSVP === 'not_attending' ? '#EF4444' : 
+                                  userRSVP === 'pending' ? '#F59E0B' : '#F59E0B' }
               ]}>
                 <Text style={styles.rsvpBadgeText}>
                   {userRSVP === 'attending' ? 'Going' : 
                    userRSVP === 'not_attending' ? 'Not Going' : 
+                   userRSVP === 'pending' ? 'Pending' :
                    userRSVP === 'maybe' ? 'Maybe' : 'Waitlist'}
                 </Text>
               </View>
@@ -472,6 +644,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
           if (modalView === 'activity') {
             setModalView('event');
             setSelectedActivity(null);
+          } else if (modalView === 'track') {
+            setModalView('event');
+          } else if (modalView === 'attendees') {
+            setModalView('event');
           } else {
             setModalVisible(false);
             setSelectedEvent(null);
@@ -487,6 +663,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                 if (modalView === 'activity') {
                   setModalView('event');
                   setSelectedActivity(null);
+                } else if (modalView === 'track') {
+                  setModalView('event');
+                } else if (modalView === 'attendees') {
+                  setModalView('event');
                 } else {
                   setModalVisible(false);
                   setSelectedEvent(null);
@@ -496,6 +676,14 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
             >
               <Text style={{ fontSize: 18, color: '#265451' }}>✕</Text>
             </TouchableOpacity>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451' }}>
+                {modalView === 'activity' ? selectedActivity?.title : 
+                 modalView === 'track' ? 'Select Track' : 
+                 modalView === 'attendees' ? 'Event Attendees' :
+                 selectedEvent?.title}
+              </Text>
+            </View>
             <View style={{ flexDirection: 'row' }}>
               <TouchableOpacity style={{ padding: 10 }}>
                 <Text style={{ fontSize: 18, color: '#265451' }}>↗</Text>
@@ -667,9 +855,24 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                   {/* Activities */}
                   {selectedEvent.activities && selectedEvent.activities.length > 0 && (
                     <View style={{ marginBottom: 20 }}>
-                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451', marginBottom: 15 }}>
-                        Activities ({selectedEvent.activities.length})
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451' }}>
+                          Activities ({selectedEvent.activities.length})
+                        </Text>
+                        {selectedTrackName && (
+                          <View style={{ 
+                            backgroundColor: '#3B82F6', 
+                            paddingHorizontal: 8, 
+                            paddingVertical: 4, 
+                            borderRadius: 12, 
+                            marginLeft: 10 
+                          }}>
+                            <Text style={{ fontSize: 12, color: 'white', fontWeight: '500' }}>
+                              {selectedTrackName}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       {(() => {
                         // Group activities by date
                         const activitiesByDate = selectedEvent.activities.reduce((groups, activity) => {
@@ -693,20 +896,45 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                           return (
                             <View key={dateString} style={{ marginBottom: 20 }}>
                               {/* Date Header */}
-                              <Text style={{ 
-                                fontSize: 16, 
-                                fontWeight: 'bold', 
-                                color: '#111827', 
+                              <View style={{ 
+                                flexDirection: 'row', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
                                 marginBottom: 12,
                                 paddingHorizontal: 4
                               }}>
-                                {date.toLocaleDateString('en-US', {
-                                  weekday: 'long',
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric'
-                                })}
-                              </Text>
+                                <Text style={{ 
+                                  fontSize: 16, 
+                                  fontWeight: 'bold', 
+                                  color: '#111827'
+                                }}>
+                                  {date.toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </Text>
+                                {selectedEvent?.has_tracks && userRSVPs[selectedEvent.id] === 'pending' && (
+                                  <TouchableOpacity
+                                    style={{
+                                      backgroundColor: '#3B82F6',
+                                      paddingHorizontal: 12,
+                                      paddingVertical: 6,
+                                      borderRadius: 6,
+                                    }}
+                                    onPress={() => {
+                                      console.log('🎯 Select Track button pressed');
+                                      console.log('🎯 Switching to track view');
+                                      setModalView('track');
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 12, color: 'white', fontWeight: '600' }}>
+                                      Select Track
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
                               {/* Date Separator */}
                               <View style={{ 
                                 height: 1, 
@@ -1462,6 +1690,19 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                   })()}
                 </View>
               </View>
+            ) : modalView === 'track' && selectedEvent ? (
+              <TrackSelectionContent 
+                event={selectedEvent}
+                onTrackSelected={handleTrackSelected}
+              />
+            ) : modalView === 'attendees' && selectedEvent ? (
+              <AttendeesContent 
+                event={selectedEvent}
+                onAttendeePress={(attendee) => {
+                  console.log('Attendee pressed:', attendee);
+                  // TODO: Open attendee profile modal
+                }}
+              />
             ) : (
               <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
                 <Text style={{ fontSize: 16, color: '#6B7280' }}>
@@ -1485,40 +1726,65 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
             paddingBottom: 35 // Extra padding for safe area
           }}>
             {modalView === 'event' && selectedEvent ? (
-              <TouchableOpacity
-                style={{ 
-                  backgroundColor: userRSVPs[selectedEvent.id] === 'attending' ? '#DC2626' : '#D29507', 
-                  paddingVertical: 15, 
-                  borderRadius: 8, 
-                  alignItems: 'center'
-                }}
-                onPress={() => {
-                  if (userRSVPs[selectedEvent.id] === 'attending') {
-                    // Show confirmation modal for removal
-                    Alert.alert(
-                      'Remove RSVP',
-                      'Are you sure you won\'t be attending this event?',
-                      [
-                        {
-                          text: 'No',
-                          style: 'cancel',
-                        },
-                        {
-                          text: 'Yes',
-                          style: 'destructive',
-                          onPress: () => handleEventRSVP(selectedEvent.id, null),
-                        },
-                      ]
-                    );
-                  } else {
-                    handleEventRSVP(selectedEvent.id, 'attending');
-                  }
-                }}
-              >
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
-                  {userRSVPs[selectedEvent.id] === 'attending' ? 'Remove RSVP' : 'RSVP here'}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ gap: 12 }}>
+                <TouchableOpacity
+                  style={{ 
+                    backgroundColor: userRSVPs[selectedEvent.id] === 'attending' ? '#DC2626' : '#D29507', 
+                    paddingVertical: 15, 
+                    borderRadius: 8, 
+                    alignItems: 'center'
+                  }}
+                  onPress={() => {
+                    if (userRSVPs[selectedEvent.id] === 'attending') {
+                      // Show confirmation modal for removal
+                      Alert.alert(
+                        'Remove RSVP',
+                        'Are you sure you won\'t be attending this event?',
+                        [
+                          {
+                            text: 'No',
+                            style: 'cancel',
+                          },
+                          {
+                            text: 'Yes',
+                            style: 'destructive',
+                            onPress: () => handleEventRSVP(selectedEvent.id, null),
+                          },
+                        ]
+                      );
+                    } else if (userRSVPs[selectedEvent.id] === 'pending') {
+                      // Open track selection modal
+                      console.log('🎯 RSVP button pressed - switching to track view');
+                      setModalView('track');
+                    } else {
+                      handleEventRSVP(selectedEvent.id, 'attending');
+                    }
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                    {userRSVPs[selectedEvent.id] === 'attending' ? 'Remove RSVP' : 
+                     userRSVPs[selectedEvent.id] === 'pending' ? 'Select Track' : 'RSVP here'}
+                  </Text>
+                </TouchableOpacity>
+                
+                {/* Attendees Button */}
+                <TouchableOpacity
+                  style={{ 
+                    backgroundColor: '#6B7280', 
+                    paddingVertical: 12, 
+                    borderRadius: 8, 
+                    alignItems: 'center'
+                  }}
+                  onPress={() => {
+                    console.log('🎯 Attendees button pressed - switching to attendees view');
+                    setModalView('attendees');
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+                    👥 View Attendees
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : modalView === 'activity' && selectedActivity ? (
               <TouchableOpacity
                 style={{ 
@@ -1533,6 +1799,39 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
               >
                 <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
                   RSVP for Activity
+                </Text>
+              </TouchableOpacity>
+            ) : modalView === 'track' && selectedEvent ? (
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: '#3B82F6', 
+                  paddingVertical: 15, 
+                  borderRadius: 8, 
+                  alignItems: 'center'
+                }}
+                onPress={() => {
+                  console.log('Track selection confirmed');
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                  Confirm Track Selection
+                </Text>
+              </TouchableOpacity>
+            ) : modalView === 'attendees' && selectedEvent ? (
+              <TouchableOpacity
+                style={{ 
+                  backgroundColor: '#6B7280', 
+                  paddingVertical: 15, 
+                  borderRadius: 8, 
+                  alignItems: 'center'
+                }}
+                onPress={() => {
+                  console.log('🎯 Back to event from attendees');
+                  setModalView('event');
+                }}
+              >
+                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                  Back to Event
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1562,6 +1861,31 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
         onClose={() => setOrganizationModalVisible(false)}
       />
 
+      {/* Profile Completion Modal */}
+      <ProfileCompletionModal
+        visible={profileCompletionModalVisible && profileCompleteness !== null}
+        profileCompleteness={profileCompleteness}
+        onClose={() => {
+          setProfileCompletionModalVisible(false);
+          // Restore the event modal when user cancels
+          if (tempSelectedEvent) {
+            setSelectedEvent(tempSelectedEvent);
+            setModalVisible(true);
+            setModalView('event');
+            setTempSelectedEvent(null);
+          }
+        }}
+        onCompleteProfile={() => {
+          setProfileCompletionModalVisible(false);
+          setModalVisible(false); // Close event modal when going to profile
+          setSelectedEvent(null);
+          setCurrentScreen('profile');
+          // Clear the profile completeness data so it gets re-checked when user returns
+          setProfileCompleteness(null);
+        }}
+      />
+
+
       {/* Floating Action Button for Create Event - Only show for admins */}
       {user?.role === 'admin' && (
         <TouchableOpacity
@@ -1581,41 +1905,135 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
 // Profile Screen
 const ProfileScreen: React.FC = () => {
   const { user, signOut } = useAuth();
-  const [userRSVPs, setUserRSVPs] = useState<Record<string, RSVPStatus>>({});
-  const [rsvpEvents, setRsvpEvents] = useState<EventWithActivities[]>([]);
-  const [loadingRSVPs, setLoadingRSVPs] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [showInterestsModal, setShowInterestsModal] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+  const [availableInterests, setAvailableInterests] = useState<any[]>([]);
 
   useEffect(() => {
     if (user) {
-      loadUserRSVPs();
+      loadUserProfile();
+      loadAvailableCategories();
+      loadAvailableInterests();
     }
   }, [user]);
 
-  const loadUserRSVPs = async () => {
+  const loadUserProfile = async () => {
     if (!user) return;
     
-    setLoadingRSVPs(true);
+    setLoading(true);
     try {
-      const rsvps = await RSVPService.getUserEventRSVPs(user.id);
-      const rsvpMap: Record<string, RSVPStatus> = {};
-      rsvps.forEach(rsvp => {
-        rsvpMap[rsvp.event_id] = rsvp.status;
-      });
-      setUserRSVPs(rsvpMap);
-      
-      // Load event details for RSVP'd events
-      const eventIds = Object.keys(rsvpMap);
-      if (eventIds.length > 0) {
-        const allEvents = await EventsService.getEvents();
-        const rsvpEventsData = allEvents.filter(event => eventIds.includes(event.id));
-        setRsvpEvents(rsvpEventsData);
-      }
-      
-      console.log('✅ Loaded user RSVPs for profile:', rsvpMap);
+      // Load profile from ProfileService
+      const userProfile = await ProfileService.getUserProfile(user.id);
+      setProfile(userProfile);
+      console.log('✅ Loaded user profile:', userProfile);
     } catch (error) {
-      console.error('Error loading user RSVPs for profile:', error);
+      console.error('Error loading user profile:', error);
+      // Fallback to mock data if service fails
+      const mockProfile = {
+        id: user.id,
+        email: user.email,
+        firstName: user.name?.split(' ')[0] || 'John',
+        lastName: user.name?.split(' ')[1] || 'Doe',
+        phoneNumber: '(555) 123-4567',
+        tShirtSize: 'Large',
+        dietaryRestrictions: 'None',
+        accessibilityNeeds: 'None',
+        bio: 'Passionate about community building and social impact. Love connecting with like-minded individuals.',
+        organizationAffiliation: 'TechCorp Inc.',
+        titlePosition: 'Software Engineer',
+        points: 1250,
+        avatarUrl: 'https://via.placeholder.com/120x120',
+        professionalCategories: [
+          { id: '1', name: 'Technology' },
+          { id: '2', name: 'Engineering' }
+        ],
+        communityInterests: [
+          { id: '1', name: 'Social Justice' },
+          { id: '2', name: 'Education' },
+          { id: '3', name: 'Health & Wellness' }
+        ],
+        eventHistory: [
+          {
+            id: '1',
+            eventId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            eventTitle: 'PBR Meetup #1',
+            attendedAt: '2025-10-15T18:00:00Z'
+          }
+        ]
+      };
+      setProfile(mockProfile);
     } finally {
-      setLoadingRSVPs(false);
+      setLoading(false);
+    }
+  };
+
+  const loadAvailableCategories = async () => {
+    try {
+      const categories = await ProfileService.getProfessionalCategories();
+      setAvailableCategories(categories);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      // Fallback to mock data
+      const mockCategories = [
+        { id: '1', name: 'Technology' },
+        { id: '2', name: 'Engineering' },
+        { id: '3', name: 'Healthcare' },
+        { id: '4', name: 'Education' },
+        { id: '5', name: 'Finance' },
+        { id: '6', name: 'Marketing' },
+        { id: '7', name: 'Sales' },
+        { id: '8', name: 'Design' },
+        { id: '9', name: 'Consulting' },
+        { id: '10', name: 'Legal' },
+        { id: '11', name: 'Real Estate' },
+        { id: '12', name: 'Non-Profit' },
+        { id: '13', name: 'Government' },
+        { id: '14', name: 'Media' },
+        { id: '15', name: 'Retail' },
+        { id: '16', name: 'Manufacturing' },
+        { id: '17', name: 'Transportation' },
+        { id: '18', name: 'Construction' },
+        { id: '19', name: 'Agriculture' },
+        { id: '20', name: 'Other' }
+      ];
+      setAvailableCategories(mockCategories);
+    }
+  };
+
+  const loadAvailableInterests = async () => {
+    try {
+      const interests = await ProfileService.getCommunityInterests();
+      setAvailableInterests(interests);
+    } catch (error) {
+      console.error('Error loading interests:', error);
+      // Fallback to mock data
+      const mockInterests = [
+        { id: '1', name: 'Social Justice' },
+        { id: '2', name: 'Education' },
+        { id: '3', name: 'Health & Wellness' },
+        { id: '4', name: 'Environment' },
+        { id: '5', name: 'Arts & Culture' },
+        { id: '6', name: 'Technology' },
+        { id: '7', name: 'Community Development' },
+        { id: '8', name: 'Youth Development' },
+        { id: '9', name: 'Senior Care' },
+        { id: '10', name: 'Housing' },
+        { id: '11', name: 'Food Security' },
+        { id: '12', name: 'Economic Development' },
+        { id: '13', name: 'Civic Engagement' },
+        { id: '14', name: 'Sports & Recreation' },
+        { id: '15', name: 'Animal Welfare' },
+        { id: '16', name: 'Veterans Support' },
+        { id: '17', name: 'Immigration' },
+        { id: '18', name: 'Disability Advocacy' },
+        { id: '19', name: 'LGBTQ+ Rights' },
+        { id: '20', name: 'Other' }
+      ];
+      setAvailableInterests(mockInterests);
     }
   };
 
@@ -1623,109 +2041,703 @@ const ProfileScreen: React.FC = () => {
     await signOut();
   };
 
+  const handleEditProfile = () => {
+    setShowEditModal(true);
+  };
+
+  const handleAddCategories = () => {
+    setShowCategoriesModal(true);
+  };
+
+  const handleAddInterests = () => {
+    setShowInterestsModal(true);
+  };
+
+  const handleImageUpload = async () => {
+    // Temporarily disabled - expo-image-picker requires native compilation
+    Alert.alert(
+      'Image Upload Coming Soon', 
+      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
+      [{ text: 'OK' }]
+    );
+    console.log('Image upload temporarily disabled - requires native compilation');
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#D29507" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load profile</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
           <Text style={styles.editButtonText}>Edit</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.profileContent}>
+      <ScrollView contentContainerStyle={styles.profilePageContent}>
         {/* Profile Header */}
-        <View style={styles.profileHeader}>
-          <Image
-            source={{ uri: 'https://via.placeholder.com/120x120' }}
-            style={styles.profileImage}
-          />
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{user?.name || 'User'}</Text>
-            <Text style={styles.profileTitle}>
-              {user?.role === 'business' ? 'Business User' : 'General User'}
-            </Text>
-            <Text style={styles.profileCompany}>Plant Build Restore</Text>
-            <Text style={styles.profileEmail}>{user?.email}</Text>
+        <View style={styles.profilePageHeader}>
+          <View style={styles.profilePageImageContainer}>
+            <AvatarComponent
+              name={`${profile.firstName} ${profile.lastName}`}
+              size={120}
+              fallbackText="??"
+              userPhotoUrl={profile.avatarUrl}
+            />
+            <TouchableOpacity style={styles.profileUploadButton} onPress={handleImageUpload}>
+              <Text style={styles.profileUploadButtonText}>Upload</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.profilePageInfo}>
+            <Text style={styles.profilePageName}>{profile.firstName} {profile.lastName}</Text>
+            <View style={styles.profilePointsContainer}>
+              <Text style={styles.profilePointsIcon}>⭐</Text>
+              <Text style={styles.profilePointsText}>{profile.points.toLocaleString()} Points</Text>
+            </View>
           </View>
         </View>
 
-        {/* User Info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Information</Text>
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Email</Text>
-            <Text style={styles.contactValue}>{user?.email}</Text>
+        {/* Personal Information */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Personal Information</Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>📧</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Email</Text>
+              <Text style={styles.profileInfoValue}>{profile.email}</Text>
+            </View>
           </View>
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Role</Text>
-            <Text style={styles.contactValue}>
-              {user?.role === 'business' ? 'Business User' : 'General User'}
-            </Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>📱</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Phone</Text>
+              <Text style={styles.profileInfoValue}>{profile.phoneNumber}</Text>
+            </View>
           </View>
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Member Since</Text>
-            <Text style={styles.contactValue}>
-              {new Date().toLocaleDateString()}
-            </Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>👕</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>T-shirt Size</Text>
+              <Text style={styles.profileInfoValue}>{profile.tShirtSize}</Text>
+            </View>
+          </View>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>🍽️</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Dietary Restrictions</Text>
+              <Text style={styles.profileInfoValue}>{profile.dietaryRestrictions}</Text>
+            </View>
+          </View>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>♿</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Accessibility Needs</Text>
+              <Text style={styles.profileInfoValue}>{profile.accessibilityNeeds}</Text>
+            </View>
           </View>
         </View>
 
-              {/* RSVP Summary */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>My RSVPs</Text>
-                {loadingRSVPs ? (
-                  <Text style={styles.loadingText}>Loading RSVPs...</Text>
-                ) : rsvpEvents.length === 0 ? (
-                  <Text style={styles.emptyText}>No RSVPs yet</Text>
-                ) : (
-                  <View style={styles.rsvpSummary}>
-                    {rsvpEvents.map(event => {
-                      const rsvpStatus = userRSVPs[event.id];
-                      const startDate = new Date(event.start_time + 'Z');
-                      const dateStr = startDate.toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        timeZone: 'UTC'
-                      });
-                      
-                      return (
-                        <View key={event.id} style={styles.rsvpItem}>
-                          <View style={styles.rsvpItemHeader}>
-                            <Text style={styles.rsvpEventTitle}>{event.title}</Text>
-                            <View style={[
-                              styles.rsvpStatusBadge,
-                              { backgroundColor: rsvpStatus === 'attending' ? '#10B981' : rsvpStatus === 'not_attending' ? '#EF4444' : '#F59E0B' }
-                            ]}>
-                              <Text style={styles.rsvpStatusBadgeText}>
-                                {rsvpStatus === 'attending' ? 'Going' : 
-                                 rsvpStatus === 'not_attending' ? 'Not Going' : 
-                                 rsvpStatus === 'maybe' ? 'Maybe' : 'Waitlist'}
-                              </Text>
-                            </View>
-                          </View>
-                          <Text style={styles.rsvpEventDate}>📅 {dateStr}</Text>
-                          <Text style={styles.rsvpEventLocation}>📍 {event.location?.name || 'Location TBD'}</Text>
-                        </View>
-                      );
-                    })}
+        {/* Bio Section */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Bio</Text>
+          <View style={styles.profileBioContainer}>
+            <Text style={styles.profileInfoIcon}>📝</Text>
+            <Text style={styles.profileBioText}>{profile.bio}</Text>
+          </View>
+        </View>
+
+        {/* Professional Information */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Professional Information</Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>🏢</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Organization</Text>
+              <Text style={styles.profileInfoValue}>{profile.organizationAffiliation}</Text>
+            </View>
+          </View>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>💼</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Title</Text>
+              <Text style={styles.profileInfoValue}>{profile.titlePosition}</Text>
+            </View>
+          </View>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>🎯</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Professional Categories</Text>
+              <View style={styles.profileChipsContainer}>
+                {profile.professionalCategories.map((category: any) => (
+                  <View key={category.id} style={styles.profileChip}>
+                    <Text style={styles.profileChipText}>{category.name}</Text>
                   </View>
-                )}
-              </View>
-
-              {/* Profile Actions */}
-              <View style={styles.profileActions}>
-                <TouchableOpacity style={styles.profileActionButton}>
-                  <Text style={styles.profileActionButtonText}>Settings</Text>
+                ))}
+                <TouchableOpacity style={styles.profileAddChip} onPress={handleAddCategories}>
+                  <Text style={styles.profileAddChipText}>+ Add More</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </View>
 
-        {/* Sign Out Button */}
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Community Interests */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Community Interests</Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>❤️</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Community Interests</Text>
+              <View style={styles.profileChipsContainer}>
+                {profile.communityInterests.map((interest: any) => (
+                  <View key={interest.id} style={styles.profileChip}>
+                    <Text style={styles.profileChipText}>{interest.name}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity style={styles.profileAddChip} onPress={handleAddInterests}>
+                  <Text style={styles.profileAddChipText}>+ Add More</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Event History */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Event History</Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>📅</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Past Events Attended</Text>
+              {profile.eventHistory.length === 0 ? (
+                <Text style={styles.emptyText}>No events attended yet</Text>
+              ) : (
+                <View style={styles.profileEventHistoryContainer}>
+                  {profile.eventHistory.map((event: any) => {
+                    const eventDate = new Date(event.attendedAt);
+                    const dateStr = eventDate.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    });
+                    return (
+                      <View key={event.id} style={styles.profileEventHistoryItem}>
+                        <Text style={styles.profileEventHistoryTitle}>{event.eventTitle}</Text>
+                        <Text style={styles.profileEventHistoryDate}>{dateStr}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.profilePageActions}>
+          <TouchableOpacity style={styles.profilePageActionButton} onPress={handleEditProfile}>
+            <Text style={styles.profilePageActionButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileSignOutButton} onPress={handleSignOut}>
+            <Text style={styles.profileSignOutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <ProfileEditModal
+          profile={profile}
+          onClose={() => setShowEditModal(false)}
+          onSave={(updatedProfile) => {
+            setProfile(updatedProfile);
+            setShowEditModal(false);
+          }}
+        />
+      )}
+
+      {/* Categories Selection Modal */}
+      {showCategoriesModal && (
+        <CategoriesSelectionModal
+          availableCategories={availableCategories}
+          selectedCategories={profile.professionalCategories}
+          onClose={() => setShowCategoriesModal(false)}
+          onSave={(selectedCategories) => {
+            const updatedProfile = {
+              ...profile,
+              professionalCategories: selectedCategories
+            };
+            setProfile(updatedProfile);
+            setShowCategoriesModal(false);
+          }}
+        />
+      )}
+
+      {/* Interests Selection Modal */}
+      {showInterestsModal && (
+        <InterestsSelectionModal
+          availableInterests={availableInterests}
+          selectedInterests={profile.communityInterests}
+          onClose={() => setShowInterestsModal(false)}
+          onSave={(selectedInterests) => {
+            const updatedProfile = {
+              ...profile,
+              communityInterests: selectedInterests
+            };
+            setProfile(updatedProfile);
+            setShowInterestsModal(false);
+          }}
+        />
+      )}
     </SafeAreaView>
+  );
+};
+
+// Profile Edit Modal
+const ProfileEditModal: React.FC<{
+  profile: any;
+  onClose: () => void;
+  onSave: (profile: any) => void;
+}> = ({ profile, onClose, onSave }) => {
+  const [formData, setFormData] = useState(profile);
+  const [saving, setSaving] = useState(false);
+  const [showTShirtDropdown, setShowTShirtDropdown] = useState(false);
+  const [showDietaryDropdown, setShowDietaryDropdown] = useState(false);
+  const [showAccessibilityDropdown, setShowAccessibilityDropdown] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Update the user profile in the database
+      await ProfileService.updateUserProfile(formData.id, {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phoneNumber: formData.phoneNumber,
+        tShirtSize: formData.tShirtSize,
+        dietaryRestrictions: formData.dietaryRestrictions,
+        accessibilityNeeds: formData.accessibilityNeeds,
+        bio: formData.bio,
+        organizationAffiliation: formData.organizationAffiliation,
+        titlePosition: formData.titlePosition,
+        avatarUrl: formData.avatarUrl,
+      });
+
+      // Update professional categories
+      const categoryIds = formData.professionalCategories.map((cat: any) => cat.id);
+      await ProfileService.updateUserProfessionalCategories(formData.id, categoryIds);
+
+      // Update community interests
+      const interestIds = formData.communityInterests.map((int: any) => int.id);
+      await ProfileService.updateUserCommunityInterests(formData.id, interestIds);
+
+      console.log('✅ Profile saved successfully');
+      
+      // Verify the update worked by re-fetching the profile
+      console.log('Verifying profile update...');
+      const updatedProfile = await ProfileService.getUserProfile(formData.id);
+      console.log('✅ Verified updated profile:', updatedProfile);
+      
+      onSave(updatedProfile);
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Error', 'Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateField = (field: string, value: string) => {
+    setFormData((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  const handleImageUpload = async () => {
+    // Temporarily disabled - expo-image-picker requires native compilation
+    Alert.alert(
+      'Image Upload Coming Soon', 
+      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
+      [{ text: 'OK' }]
+    );
+    console.log('Image upload temporarily disabled - requires native compilation');
+  };
+
+  const tShirtSizes = ['XS', 'S', 'M', 'L', '2XL', '3XL', '4XL'];
+  const dietaryOptions = ['None', 'Vegan', 'Vegetarian', 'Pescatarian', 'Other'];
+  const accessibilityOptions = ['None', 'Yes'];
+
+  return (
+    <Modal
+      visible={true}
+      animationType="slide"
+      presentationStyle="fullScreen"
+    >
+      <SafeAreaView style={styles.profileModalOverlay}>
+        <View style={styles.profileModalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.profileModalCloseButton}>
+            <Text style={styles.profileModalCloseButtonText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.profileModalTitle}>Edit Profile</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.profileModalSaveButton} disabled={saving}>
+            <Text style={styles.profileModalSaveButtonText}>{saving ? 'Saving...' : 'Save'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.profileModalContent}>
+          {/* Profile Image Section */}
+          <View style={styles.profileSection}>
+            <Text style={styles.profileSectionTitle}>Profile Picture</Text>
+            <View style={styles.profilePageImageContainer}>
+              <AvatarComponent
+                name={`${formData.firstName} ${formData.lastName}`}
+                size={120}
+                fallbackText="??"
+                userPhotoUrl={formData.avatarUrl}
+              />
+              <TouchableOpacity style={styles.profileUploadButton} onPress={handleImageUpload}>
+                <Text style={styles.profileUploadButtonText}>Upload</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Personal Information */}
+          <View style={styles.profileSection}>
+            <Text style={styles.profileSectionTitle}>Personal Information</Text>
+            
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>First Name</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.firstName}
+                onChangeText={(value) => updateField('firstName', value)}
+                placeholder="Enter first name"
+              />
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Last Name</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.lastName}
+                onChangeText={(value) => updateField('lastName', value)}
+                placeholder="Enter last name"
+              />
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Email</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.email}
+                onChangeText={(value) => updateField('email', value)}
+                placeholder="Enter email address"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.phoneNumber}
+                onChangeText={(value) => updateField('phoneNumber', value)}
+                placeholder="Enter phone number"
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>T-shirt Size</Text>
+              <TouchableOpacity
+                style={styles.profileDropdownButton}
+                onPress={() => setShowTShirtDropdown(!showTShirtDropdown)}
+              >
+                <Text style={styles.profileDropdownButtonText}>{formData.tShirtSize}</Text>
+                <Text style={styles.profileDropdownArrow}>{showTShirtDropdown ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {showTShirtDropdown && (
+                <View style={styles.profileDropdownList}>
+                  {tShirtSizes.map((size) => (
+                    <TouchableOpacity
+                      key={size}
+                      style={styles.profileDropdownItem}
+                      onPress={() => {
+                        updateField('tShirtSize', size);
+                        setShowTShirtDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.profileDropdownItemText}>{size}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Dietary Restrictions</Text>
+              <TouchableOpacity
+                style={styles.profileDropdownButton}
+                onPress={() => setShowDietaryDropdown(!showDietaryDropdown)}
+              >
+                <Text style={styles.profileDropdownButtonText}>{formData.dietaryRestrictions}</Text>
+                <Text style={styles.profileDropdownArrow}>{showDietaryDropdown ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {showDietaryDropdown && (
+                <View style={styles.profileDropdownList}>
+                  {dietaryOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.profileDropdownItem}
+                      onPress={() => {
+                        updateField('dietaryRestrictions', option);
+                        setShowDietaryDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.profileDropdownItemText}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Accessibility Needs</Text>
+              <TouchableOpacity
+                style={styles.profileDropdownButton}
+                onPress={() => setShowAccessibilityDropdown(!showAccessibilityDropdown)}
+              >
+                <Text style={styles.profileDropdownButtonText}>{formData.accessibilityNeeds}</Text>
+                <Text style={styles.profileDropdownArrow}>{showAccessibilityDropdown ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+              {showAccessibilityDropdown && (
+                <View style={styles.profileDropdownList}>
+                  {accessibilityOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.profileDropdownItem}
+                      onPress={() => {
+                        updateField('accessibilityNeeds', option);
+                        setShowAccessibilityDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.profileDropdownItemText}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Bio */}
+          <View style={styles.profileSection}>
+            <Text style={styles.profileSectionTitle}>Bio</Text>
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Bio</Text>
+              <TextInput
+                style={[styles.profileTextInput, styles.profileTextArea]}
+                value={formData.bio}
+                onChangeText={(value) => updateField('bio', value)}
+                placeholder="Tell us about yourself..."
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+          </View>
+
+          {/* Professional Information */}
+          <View style={styles.profileSection}>
+            <Text style={styles.profileSectionTitle}>Professional Information</Text>
+            
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Organization</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.organizationAffiliation}
+                onChangeText={(value) => updateField('organizationAffiliation', value)}
+                placeholder="Enter organization"
+              />
+            </View>
+
+            <View style={styles.profileInputGroup}>
+              <Text style={styles.profileInputLabel}>Title/Position</Text>
+              <TextInput
+                style={styles.profileTextInput}
+                value={formData.titlePosition}
+                onChangeText={(value) => updateField('titlePosition', value)}
+                placeholder="Enter title/position"
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Categories Selection Modal
+const CategoriesSelectionModal: React.FC<{
+  availableCategories: any[];
+  selectedCategories: any[];
+  onClose: () => void;
+  onSave: (categories: any[]) => void;
+}> = ({ availableCategories, selectedCategories, onClose, onSave }) => {
+  const [selected, setSelected] = useState<any[]>(selectedCategories);
+
+  const handleToggleCategory = (category: any) => {
+    const isSelected = selected.some(cat => cat.id === category.id);
+    if (isSelected) {
+      setSelected(selected.filter(cat => cat.id !== category.id));
+    } else {
+      setSelected([...selected, category]);
+    }
+  };
+
+  const handleSave = () => {
+    onSave(selected);
+  };
+
+  return (
+    <Modal
+      visible={true}
+      animationType="slide"
+      presentationStyle="fullScreen"
+    >
+      <SafeAreaView style={styles.profileModalOverlay}>
+        <View style={styles.profileModalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.profileModalCloseButton}>
+            <Text style={styles.profileModalCloseButtonText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.profileModalTitle}>Select Professional Categories</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.profileModalSaveButton}>
+            <Text style={styles.profileModalSaveButtonText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.profileModalContent}>
+          <View style={styles.selectionContainer}>
+            {availableCategories.map((category) => {
+              const isSelected = selected.some(cat => cat.id === category.id);
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.selectionItem,
+                    isSelected && styles.selectionItemSelected
+                  ]}
+                  onPress={() => handleToggleCategory(category)}
+                >
+                  <Text style={[
+                    styles.selectionItemText,
+                    isSelected && styles.selectionItemTextSelected
+                  ]}>
+                    {category.name}
+                  </Text>
+                  {isSelected && (
+                    <Text style={styles.selectionItemCheckmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Interests Selection Modal
+const InterestsSelectionModal: React.FC<{
+  availableInterests: any[];
+  selectedInterests: any[];
+  onClose: () => void;
+  onSave: (interests: any[]) => void;
+}> = ({ availableInterests, selectedInterests, onClose, onSave }) => {
+  const [selected, setSelected] = useState<any[]>(selectedInterests);
+
+  const handleToggleInterest = (interest: any) => {
+    const isSelected = selected.some(int => int.id === interest.id);
+    if (isSelected) {
+      setSelected(selected.filter(int => int.id !== interest.id));
+    } else {
+      setSelected([...selected, interest]);
+    }
+  };
+
+  const handleSave = () => {
+    onSave(selected);
+  };
+
+  return (
+    <Modal
+      visible={true}
+      animationType="slide"
+      presentationStyle="fullScreen"
+    >
+      <SafeAreaView style={styles.profileModalOverlay}>
+        <View style={styles.profileModalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.profileModalCloseButton}>
+            <Text style={styles.profileModalCloseButtonText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.profileModalTitle}>Select Community Interests</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.profileModalSaveButton}>
+            <Text style={styles.profileModalSaveButtonText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.profileModalContent}>
+          <View style={styles.selectionContainer}>
+            {availableInterests.map((interest) => {
+              const isSelected = selected.some(int => int.id === interest.id);
+              return (
+                <TouchableOpacity
+                  key={interest.id}
+                  style={[
+                    styles.selectionItem,
+                    isSelected && styles.selectionItemSelected
+                  ]}
+                  onPress={() => handleToggleInterest(interest)}
+                >
+                  <Text style={[
+                    styles.selectionItemText,
+                    isSelected && styles.selectionItemTextSelected
+                  ]}>
+                    {interest.name}
+                  </Text>
+                  {isSelected && (
+                    <Text style={styles.selectionItemCheckmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 };
 
@@ -1879,10 +2891,13 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     setLoadingUsers(true);
     try {
       // Fetch all users except the current user
-      const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/users?select=id,name,email,avatar_url&id=neq.${user?.id}`, {
+      const SUPABASE_URL = 'http://192.168.1.129:54321';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+      
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/users?select=id,name,email,avatar_url&id=neq.${user?.id}`, {
         headers: {
-          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
       });
       
@@ -2583,12 +3598,14 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingMembers(true);
     try {
       // Get members from chat_memberships table
+      const SUPABASE_URL = 'http://192.168.1.129:54321';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/chat_memberships?select=*,users(*)&thread_id=eq.${threadId}&is_active=eq.true`,
+        `${SUPABASE_URL}/rest/v1/chat_memberships?select=*,users(*)&thread_id=eq.${threadId}&is_active=eq.true`,
         {
           headers: {
-            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
         }
@@ -2609,13 +3626,15 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingUsersForAdd(true);
     try {
       // Get all users except current members
+      const SUPABASE_URL = 'http://192.168.1.129:54321';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
       const currentMemberIds = threadMembers.map(member => member.user_id);
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/rest/v1/users?select=id,name,email&id=not.in.(${currentMemberIds.join(',')})`,
+        `${SUPABASE_URL}/rest/v1/users?select=id,name,email&id=not.in.(${currentMemberIds.join(',')})`,
         {
           headers: {
-            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
         }
@@ -2690,9 +3709,12 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     return (
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
         {!isOwnMessage && (
-          <Image 
-            source={{ uri: item.user?.profile_image_url || 'https://via.placeholder.com/30x30' }} 
-            style={styles.messageAvatar} 
+          <AvatarComponent
+            name={item.user?.name || 'Unknown User'}
+            size={30}
+            fallbackText="??"
+            style={styles.messageAvatar}
+            forceInitials={true}
           />
         )}
         <View style={[styles.messageBubble, isOwnMessage && styles.ownMessageBubble]}>
@@ -3996,6 +5018,329 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Profile Page Styles
+  profilePageContent: {
+    padding: 20,
+    paddingBottom: 100,
+  },
+  profilePageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  profilePageImageContainer: {
+    alignItems: 'center',
+    marginRight: 20,
+  },
+  profilePageImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 10,
+  },
+  profileUploadButton: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  profileUploadButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  profilePageInfo: {
+    flex: 1,
+  },
+  profilePageName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#265451',
+    marginBottom: 8,
+  },
+  profilePointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profilePointsIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  profilePointsText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#D29507',
+  },
+  profileSection: {
+    marginBottom: 30,
+  },
+  profileSectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#265451',
+    marginBottom: 16,
+  },
+  profileInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingVertical: 8,
+  },
+  profileInfoIcon: {
+    fontSize: 20,
+    marginRight: 12,
+    marginTop: 2,
+    width: 24,
+  },
+  profileInfoContent: {
+    flex: 1,
+  },
+  profileInfoLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  profileInfoValue: {
+    fontSize: 16,
+    color: '#265451',
+    lineHeight: 22,
+  },
+  profileBioContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  profileBioText: {
+    fontSize: 16,
+    color: '#265451',
+    lineHeight: 22,
+    flex: 1,
+    marginLeft: 12,
+  },
+  profileChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  profileChip: {
+    backgroundColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  profileChipText: {
+    fontSize: 14,
+    color: '#265451',
+    fontWeight: '500',
+  },
+  profileAddChip: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  profileAddChipText: {
+    fontSize: 14,
+    color: 'white',
+    fontWeight: '600',
+  },
+  profileEventHistoryContainer: {
+    marginTop: 8,
+  },
+  profileEventHistoryItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  profileEventHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 4,
+  },
+  profileEventHistoryDate: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  profilePageActions: {
+    marginTop: 20,
+    gap: 12,
+  },
+  profilePageActionButton: {
+    backgroundColor: '#D29507',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  profilePageActionButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  profileSignOutButton: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  profileSignOutButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Profile Edit Modal Styles
+  profileModalOverlay: {
+    flex: 1,
+    backgroundColor: '#FBF6F1',
+  },
+  profileModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  profileModalCloseButton: {
+    padding: 8,
+  },
+  profileModalCloseButtonText: {
+    fontSize: 20,
+    color: '#6B7280',
+  },
+  profileModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#265451',
+  },
+  profileModalSaveButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#D29507',
+    borderRadius: 8,
+  },
+  profileModalSaveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  profileModalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  profileInputGroup: {
+    marginBottom: 20,
+  },
+  profileInputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 8,
+  },
+  profileTextInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    backgroundColor: 'white',
+    color: '#265451',
+  },
+  profileTextArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  // Selection Modal Styles
+  selectionContainer: {
+    padding: 20,
+  },
+  selectionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  selectionItemSelected: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#D29507',
+  },
+  selectionItemText: {
+    fontSize: 16,
+    color: '#265451',
+    fontWeight: '500',
+  },
+  selectionItemTextSelected: {
+    color: '#D29507',
+    fontWeight: '600',
+  },
+  selectionItemCheckmark: {
+    fontSize: 18,
+    color: '#D29507',
+    fontWeight: 'bold',
+  },
+  // Dropdown Styles
+  profileDropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: 'white',
+  },
+  profileDropdownButtonText: {
+    fontSize: 16,
+    color: '#265451',
+  },
+  profileDropdownArrow: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  profileDropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    marginTop: 4,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  profileDropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  profileDropdownItemText: {
+    fontSize: 16,
+    color: '#265451',
   },
 });
 

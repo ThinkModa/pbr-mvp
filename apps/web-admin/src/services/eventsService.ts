@@ -10,6 +10,11 @@ type ActivityInsert = Database['public']['Tables']['activities']['Insert'];
 
 export interface EventWithActivities extends Event {
   activities: Activity[];
+  // Add missing properties that the dashboard expects
+  name?: string; // Alias for title
+  start_date?: string; // Alias for start_time
+  end_date?: string; // Alias for end_time
+  has_tracks?: boolean; // Track system property
 }
 
 export class EventsService {
@@ -28,7 +33,14 @@ export class EventsService {
       throw error;
     }
 
-    return events || [];
+    // Transform events to include expected properties
+    return (events || []).map(event => ({
+      ...event,
+      name: event.title, // Alias for title
+      start_date: event.start_time, // Alias for start_time
+      end_date: event.end_time, // Alias for end_time
+      has_tracks: event.has_tracks || false, // Default to false if not set
+    }));
   }
 
   // Create a new event
@@ -48,6 +60,7 @@ export class EventsService {
     show_capacity?: boolean;
     show_price?: boolean;
     show_attendee_count?: boolean;
+    has_tracks?: boolean;
     cover_image_url?: string;
     activities: Array<{
       name: string;
@@ -82,6 +95,7 @@ export class EventsService {
             show_capacity: eventData.show_capacity ?? true,
             show_price: eventData.show_price ?? true,
             show_attendee_count: eventData.show_attendee_count ?? true,
+            has_tracks: eventData.has_tracks ?? false,
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             organization_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // PBR Community org
@@ -105,7 +119,7 @@ export class EventsService {
         start_time: activity.start_time,
         end_time: activity.end_time,
         location: { name: activity.location },
-        max_capacity: activity.capacity,
+        max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
 
@@ -156,6 +170,7 @@ export class EventsService {
       show_capacity?: boolean;
       show_price?: boolean;
       show_attendee_count?: boolean;
+      has_tracks?: boolean;
       cover_image_url?: string;
       activities: Array<{
         id?: string;
@@ -192,6 +207,7 @@ export class EventsService {
             show_capacity: eventData.show_capacity ?? true,
             show_price: eventData.show_price ?? true,
             show_attendee_count: eventData.show_attendee_count ?? true,
+            has_tracks: eventData.has_tracks ?? false,
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             status: 'published', // Keep as published when updating
@@ -225,7 +241,7 @@ export class EventsService {
         start_time: activity.start_time,
         end_time: activity.end_time,
         location: { name: activity.location },
-        max_capacity: activity.capacity,
+        max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
 

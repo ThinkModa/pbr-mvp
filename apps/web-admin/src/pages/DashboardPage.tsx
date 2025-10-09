@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Speaker, CreateSpeakerData, UpdateSpeakerData, SpeakersService } from '../services/speakersService';
 import { Organization, CreateOrganizationData, UpdateOrganizationData, OrganizationsService } from '../services/organizationsService';
 import { EventsService, EventWithActivities } from '../services/eventsService';
+import { supabase } from '../lib/supabase';
 import SpeakerCard from '../components/SpeakerCard';
 import SpeakerListCard from '../components/SpeakerListCard';
 import SpeakerForm from '../components/SpeakerForm';
@@ -10,7 +11,10 @@ import OrganizationListCard from '../components/OrganizationListCard';
 import OrganizationForm from '../components/OrganizationForm';
 import ConsistentNavigation from '../components/ConsistentNavigation';
 import LocationPicker from '../components/LocationPicker';
+import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
+import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
+import ManualUserCreation from '../components/ManualUserCreation';
 
 // Activity categories with colors and icons
 const ACTIVITY_CATEGORIES = [
@@ -24,10 +28,39 @@ const ACTIVITY_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
 ];
 
+// Generate time options in 15-minute increments with 12-hour format (8am to 9pm only)
+const generateTimeOptions = () => {
+  const times = [];
+  for (let hour = 8; hour <= 21; hour++) { // 8am to 9pm (21:00)
+    for (let minute = 0; minute < 60; minute += 15) {
+      const date = new Date();
+      date.setHours(hour, minute, 0, 0);
+      
+      const time12Hour = date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      const time24Hour = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      
+      times.push({
+        label: time12Hour,
+        value: time24Hour
+      });
+    }
+  }
+  return times;
+};
+
+const TIME_OPTIONS = generateTimeOptions();
+
 interface Activity {
   name: string;
   description: string;
+  startDate: string;
   startTime: string;
+  endDate: string;
   endTime: string;
   location: string;
   category: string;
@@ -67,6 +100,24 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [events, setEvents] = useState<EventWithActivities[]>([]);
   const [showCreateEventForm, setShowCreateEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithActivities | null>(null);
+  const [selectedEventForTracks, setSelectedEventForTracks] = useState<EventWithActivities | null>(null);
+  // Users state
+  const [users, setUsers] = useState<any[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [usersView, setUsersView] = useState<'list' | 'bulk-import'>('list');
+  const [showManualUserCreation, setShowManualUserCreation] = useState(false);
+
+  // Bulk import state
+  const [csvContent, setCsvContent] = useState<string>('');
+  const [parsedUsers, setParsedUsers] = useState<ImportUser[]>([]);
+  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  const [mappedUsers, setMappedUsers] = useState<ImportUser[]>([]);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string>('');
+  const [importStep, setImportStep] = useState<'upload' | 'mapping' | 'preview' | 'import' | 'complete'>('upload');
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
@@ -75,7 +126,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     name: '',
     description: '',
     startDate: '',
+    startTime: '',
     endDate: '',
+    endTime: '',
     location: {
       name: '',
       address: '',
@@ -87,6 +140,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     showCapacity: true,
     showPrice: true,
     showAttendeeCount: true,
+    hasTracks: false,
     coverImageUrl: '',
   });
 
@@ -118,6 +172,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   useEffect(() => {
     if (currentView === 'events') {
       loadEvents();
+    }
+  }, [currentView]);
+
+  // Load users when users view is selected
+  useEffect(() => {
+    if (currentView === 'users') {
+      loadUsers();
     }
   }, [currentView]);
 
@@ -289,6 +350,32 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     }
   };
 
+  // Users functions
+  const loadUsers = async () => {
+    try {
+      setUsersLoading(true);
+      setUsersError(null);
+      
+      // Fetch users from Supabase
+      const { data: usersData, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      setUsers(usersData || []);
+      console.log('✅ Loaded users:', usersData?.length || 0);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setUsersError('Failed to load users');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   const handleCreateEvent = async (eventData: any) => {
     try {
       setEventsLoading(true);
@@ -335,17 +422,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
   const handleEditEvent = (event: EventWithActivities) => {
     setEditingEvent(event);
+    
+    // Parse datetime strings into separate date and time
+    const startDateTime = new Date(event.start_time);
+    const endDateTime = new Date(event.end_time);
+    
     setEventFormData({
       name: event.title,
       description: event.description,
-      startDate: event.start_time,
-      endDate: event.end_time,
+      startDate: startDateTime.toISOString().split('T')[0],
+      startTime: startDateTime.toTimeString().slice(0, 5),
+      endDate: endDateTime.toISOString().split('T')[0],
+      endTime: endDateTime.toTimeString().slice(0, 5),
       location: event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
       capacity: event.max_capacity?.toString() || '',
       price: event.price ? (event.price / 100).toString() : '',
       showCapacity: event.show_capacity,
       showPrice: event.show_price,
       showAttendeeCount: event.show_attendee_count,
+      hasTracks: event.has_tracks,
       coverImageUrl: event.cover_image_url || '',
     });
     
@@ -355,16 +450,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     } else {
       setImagePreview('');
     }
-    setActivities((event.activities || []).map(activity => ({
-      name: activity.title,
-      description: activity.description || '',
-      startTime: activity.startTime,
-      endTime: activity.endTime,
-      location: activity.location?.name || '',
-      category: 'other', // Default category
-      capacity: activity.maxCapacity?.toString() || '',
-      isRequired: activity.isRequired
-    })));
+    setActivities((event.activities || []).map(activity => {
+      const startDateTime = new Date(activity.start_time);
+      const endDateTime = new Date(activity.end_time);
+      
+      return {
+        name: activity.title,
+        description: activity.description || '',
+        startDate: startDateTime.toISOString().split('T')[0],
+        startTime: startDateTime.toTimeString().slice(0, 5),
+        endDate: endDateTime.toISOString().split('T')[0],
+        endTime: endDateTime.toTimeString().slice(0, 5),
+        location: activity.location?.name || '',
+        category: 'other', // Default category
+        capacity: activity.max_capacity?.toString() || '',
+        isRequired: activity.is_required
+      };
+    }));
     setEventSpeakers([]);
     setEventBusinesses([]);
     setShowCreateEventForm(true);
@@ -381,13 +483,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       name: '',
       description: '',
       startDate: '',
+      startTime: '',
       endDate: '',
+      endTime: '',
       location: { name: '', address: '', coordinates: undefined, placeId: undefined },
       capacity: '',
       price: '',
       showCapacity: true,
       showPrice: true,
       showAttendeeCount: true,
+      hasTracks: false,
       coverImageUrl: '',
     });
     setActivities([]);
@@ -407,25 +512,28 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const eventData = {
         name: eventFormData.name,
         description: eventFormData.description,
-        start_date: eventFormData.startDate,
-        end_date: eventFormData.endDate,
+        start_date: `${eventFormData.startDate}T${eventFormData.startTime}:00`,
+        end_date: `${eventFormData.endDate}T${eventFormData.endTime}:00`,
         location: eventFormData.location,
         capacity: eventFormData.capacity ? parseInt(eventFormData.capacity) : undefined,
         price: eventFormData.price ? parseFloat(eventFormData.price) : undefined,
         show_capacity: eventFormData.showCapacity,
         show_price: eventFormData.showPrice,
         show_attendee_count: eventFormData.showAttendeeCount,
+        has_tracks: eventFormData.hasTracks,
         cover_image_url: eventFormData.coverImageUrl,
-        activities: activities.map(activity => ({
-          name: activity.name,
-          description: activity.description,
-          start_time: activity.startTime,
-          end_time: activity.endTime,
-          location: activity.location,
-          category: activity.category,
-          capacity: activity.capacity,
-          is_required: activity.isRequired,
-        })),
+        activities: activities
+          .filter(activity => activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime)
+          .map(activity => ({
+            name: activity.name,
+            description: activity.description,
+            start_time: `${activity.startDate}T${activity.startTime}:00`,
+            end_time: `${activity.endDate}T${activity.endTime}:00`,
+            location: activity.location,
+            category: activity.category,
+            capacity: activity.capacity,
+            is_required: activity.isRequired,
+          })),
       };
 
       if (editingEvent) {
@@ -507,7 +615,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     setActivities([...activities, {
       name: '',
       description: '',
+      startDate: '',
       startTime: '',
+      endDate: '',
       endTime: '',
       location: '',
       category: 'other',
@@ -529,6 +639,123 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const handleNavigation = (page: 'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings') => {
     setCurrentView(page);
     onNavigate(page);
+  };
+
+  // Bulk import handlers
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setImportError('Please upload a CSV file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setCsvContent(content);
+      try {
+        const users = BulkImportService.parseCSV(content);
+        setParsedUsers(users);
+        setImportError('');
+        setImportStep('mapping');
+      } catch (err) {
+        setImportError(`Failed to parse CSV: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFieldMapping = () => {
+    try {
+      const mapped = BulkImportService.mapFields(parsedUsers, fieldMappings);
+      // Validate the mapped users to show any issues in preview
+      const { validUsers, errors } = BulkImportService.validateUsers(mapped);
+      setMappedUsers(validUsers);
+      setImportStep('preview');
+      
+      // Show validation errors as warnings
+      if (errors.length > 0) {
+        console.warn('Validation errors found:', errors);
+      }
+    } catch (err) {
+      setImportError(`Failed to map fields: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleImport = async () => {
+    setImportLoading(true);
+    setImportError('');
+    
+    try {
+      console.log('🚀 Starting import with users:', mappedUsers.length);
+      const result = await BulkImportService.importUsers(mappedUsers);
+      console.log('📊 Import result:', result);
+      setImportResult(result);
+      setImportStep('complete');
+      
+      // Refresh pending users list
+      console.log('🔄 Refreshing pending users list...');
+      const pending = await BulkImportService.getPendingUsers();
+      console.log('👥 Retrieved pending users:', pending.length);
+      setPendingUsers(pending);
+    } catch (err) {
+      console.error('❌ Import failed:', err);
+      setImportError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleSendInvitations = async (userIds: string[]) => {
+    setImportLoading(true);
+    setImportError('');
+    
+    try {
+      await BulkImportService.sendInvitations(userIds);
+      
+      // Refresh pending users list
+      const pending = await BulkImportService.getPendingUsers();
+      setPendingUsers(pending);
+    } catch (err) {
+      setImportError(`Failed to send invitations: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const resetImport = () => {
+    setImportStep('upload');
+    setCsvContent('');
+    setParsedUsers([]);
+    setFieldMappings([]);
+    setMappedUsers([]);
+    setImportResult(null);
+    setImportError('');
+  };
+
+  const getCsvHeaders = (): string[] => {
+    if (!csvContent) return [];
+    const firstLine = csvContent.split('\n')[0];
+    return firstLine.split(',').map(h => h.trim().replace(/"/g, ''));
+  };
+
+  const updateFieldMapping = (csvColumn: string, userField: string) => {
+    setFieldMappings(prev => {
+      const existing = prev.find(m => m.csvColumn === csvColumn);
+      if (existing) {
+        return prev.map(m => 
+          m.csvColumn === csvColumn ? { ...m, userField } : m
+        );
+      } else {
+        return [...prev, { csvColumn, userField, required: false }];
+      }
+    });
+  };
+
+  const removeFieldMapping = (csvColumn: string) => {
+    setFieldMappings(prev => prev.filter(m => m.csvColumn !== csvColumn));
   };
 
   return (
@@ -1407,6 +1634,576 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
               </>
             )}
 
+            {/* Users View */}
+            {currentView === 'users' && (
+              <>
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+                  <h1 style={{ fontSize: '30px', fontWeight: 'bold', color: '#111827' }}>
+                    Users Management
+                  </h1>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      onClick={() => setShowManualUserCreation(true)}
+                      style={{
+                        backgroundColor: '#10B981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 24px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>➕</span>
+                      Create User
+                    </button>
+                    <button
+                      onClick={() => setUsersView('list')}
+                      style={{
+                        backgroundColor: usersView === 'list' ? '#3B82F6' : '#F3F4F6',
+                        color: usersView === 'list' ? 'white' : '#374151',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 24px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>👥</span>
+                      All Users
+                    </button>
+                    <button
+                      onClick={() => setUsersView('bulk-import')}
+                      style={{
+                        backgroundColor: usersView === 'bulk-import' ? '#3B82F6' : '#F3F4F6',
+                        color: usersView === 'bulk-import' ? 'white' : '#374151',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '12px 24px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>📊</span>
+                      Bulk Import
+                    </button>
+                  </div>
+                </div>
+
+                {/* Users List View */}
+                {usersView === 'list' && (
+                  <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '24px', border: '1px solid #E5E7EB' }}>
+                    <div style={{ marginBottom: '24px' }}>
+                      <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                        All Users
+                      </h2>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                            View Mode
+                          </label>
+                          <select style={{ width: '100%', border: '1px solid #D1D5DB', borderRadius: '6px', padding: '8px 12px', fontSize: '14px' }}>
+                            <option value="all">All RSVPs</option>
+                            <option value="unique">Unique Users</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                            Event
+                          </label>
+                          <select style={{ width: '100%', border: '1px solid #D1D5DB', borderRadius: '6px', padding: '8px 12px', fontSize: '14px' }}>
+                            <option value="">All Events</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                            Status
+                          </label>
+                          <select style={{ width: '100%', border: '1px solid #D1D5DB', borderRadius: '6px', padding: '8px 12px', fontSize: '14px' }}>
+                            <option value="">All Statuses</option>
+                            <option value="attending">Attending</option>
+                            <option value="pending">Pending</option>
+                            <option value="not_attending">Not Attending</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'end' }}>
+                          <button
+                            style={{
+                              width: '100%',
+                              backgroundColor: '#3B82F6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '8px 16px',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Apply Filters
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Users Table */}
+                    <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead style={{ backgroundColor: '#F9FAFB' }}>
+                            <tr>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                User
+                              </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Contact
+                              </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                RSVP Status
+                              </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Track
+                              </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                RSVP Date
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {usersLoading ? (
+                              <tr style={{ borderTop: '1px solid #E5E7EB' }}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
+                                  Loading users...
+                                </td>
+                              </tr>
+                            ) : usersError ? (
+                              <tr style={{ borderTop: '1px solid #E5E7EB' }}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#DC2626' }} colSpan={5}>
+                                  Error: {usersError}
+                                </td>
+                              </tr>
+                            ) : users.length === 0 ? (
+                              <tr style={{ borderTop: '1px solid #E5E7EB' }}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
+                                  No users found. Use the "Create User" button or Bulk Import tab to add users.
+                                </td>
+                              </tr>
+                            ) : (
+                              users.map((user) => (
+                                <tr key={user.id} style={{ borderTop: '1px solid #E5E7EB' }}>
+                                  <td style={{ padding: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '500', color: '#6B7280' }}>
+                                        {user.first_name?.[0]}{user.last_name?.[0]}
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: '14px', fontWeight: '500', color: '#111827' }}>
+                                          {user.first_name} {user.last_name}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#6B7280' }}>
+                                          {user.title_position || 'No title'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <div style={{ fontSize: '14px', color: '#111827' }}>
+                                      {user.email}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#6B7280' }}>
+                                      {user.phone_number || 'No phone'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <span style={{ 
+                                      padding: '4px 8px', 
+                                      borderRadius: '4px', 
+                                      fontSize: '12px', 
+                                      fontWeight: '500',
+                                      backgroundColor: user.status === 'active' ? '#DCFCE7' : '#FEF3C7',
+                                      color: user.status === 'active' ? '#15803D' : '#D97706'
+                                    }}>
+                                      {user.status || 'pending'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '16px', color: '#6B7280', fontSize: '14px' }}>
+                                    -
+                                  </td>
+                                  <td style={{ padding: '16px', color: '#6B7280', fontSize: '14px' }}>
+                                    {new Date(user.created_at).toLocaleDateString()}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bulk Import View */}
+                {usersView === 'bulk-import' && (
+                  <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '24px', border: '1px solid #E5E7EB' }}>
+                    {/* Progress Steps */}
+                    <div style={{ marginBottom: '32px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {['Upload CSV', 'Map Fields', 'Preview', 'Import', 'Complete'].map((stepName, index) => {
+                          const stepIndex = ['upload', 'mapping', 'preview', 'import', 'complete'].indexOf(importStep);
+                          const isActive = index <= stepIndex;
+                          const isCurrent = index === stepIndex;
+                          
+                          return (
+                            <div key={stepName} style={{ display: 'flex', alignItems: 'center' }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                backgroundColor: isActive ? '#3B82F6' : '#E5E7EB',
+                                color: isActive ? 'white' : '#6B7280'
+                              }}>
+                                {index + 1}
+                              </div>
+                              <span style={{
+                                marginLeft: '8px',
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                color: isCurrent ? '#3B82F6' : isActive ? '#374151' : '#9CA3AF'
+                              }}>
+                                {stepName}
+                              </span>
+                              {index < 4 && (
+                                <div style={{
+                                  width: '64px',
+                                  height: '2px',
+                                  margin: '0 16px',
+                                  backgroundColor: isActive ? '#3B82F6' : '#E5E7EB'
+                                }} />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {importError && (
+                      <div style={{ marginBottom: '16px', padding: '16px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px' }}>
+                        <p style={{ color: '#DC2626' }}>{importError}</p>
+                      </div>
+                    )}
+
+                    {/* Step 1: Upload CSV */}
+                    {importStep === 'upload' && (
+                      <div>
+                        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                          Upload CSV File
+                        </h2>
+                        <p style={{ color: '#6B7280', marginBottom: '24px' }}>
+                          Upload a CSV file to import multiple users at once. <strong>Required columns: email, phone_number</strong>. 
+                          First and last names will be generated from email if not provided. Other fields are optional and can be completed by users when they sign up.
+                        </p>
+                        
+                        <div style={{ border: '2px dashed #D1D5DB', borderRadius: '8px', padding: '32px', textAlign: 'center', backgroundColor: '#F9FAFB' }}>
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleFileUpload}
+                            style={{ display: 'none' }}
+                            id="csv-upload"
+                          />
+                          <label htmlFor="csv-upload" style={{ cursor: 'pointer' }}>
+                            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+                            <h3 style={{ fontSize: '16px', fontWeight: '500', color: '#111827', marginBottom: '8px' }}>
+                              Upload CSV File
+                            </h3>
+                            <p style={{ color: '#6B7280', marginBottom: '16px' }}>
+                              Drag and drop your CSV file here, or click to browse
+                            </p>
+                            <div style={{
+                              backgroundColor: '#3B82F6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '12px 24px',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                              display: 'inline-block'
+                            }}>
+                              Choose File
+                            </div>
+                          </label>
+                        </div>
+
+                        {/* Sample CSV Info */}
+                        <div style={{ marginTop: '24px', backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '16px' }}>
+                          <h4 style={{ fontSize: '14px', fontWeight: '500', color: '#0C4A6E', marginBottom: '8px' }}>
+                            Sample CSV Format
+                          </h4>
+                          <div style={{ fontSize: '12px', color: '#0C4A6E', fontFamily: 'monospace', backgroundColor: 'white', padding: '8px', borderRadius: '4px', border: '1px solid #BAE6FD' }}>
+                            first_name,last_name,email,phone,title_position<br/>
+                            John,Doe,john.doe@example.com,555-0101,Software Engineer<br/>
+                            Jane,Smith,jane.smith@example.com,555-0102,Product Manager
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 2: Field Mapping */}
+                    {importStep === 'mapping' && (
+                      <div>
+                        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                          Map CSV Columns to User Fields
+                        </h2>
+                        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px' }}>
+                          <p style={{ color: '#0369A1', fontSize: '14px', margin: 0 }}>
+                            <strong>💡 Tip:</strong> Only <strong>Email</strong> and <strong>Phone Number</strong> are required. 
+                            First and last names will be automatically generated from email addresses if not provided. 
+                            All other fields are optional and can be completed by users when they sign up.
+                          </p>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                          {getCsvHeaders().map(header => (
+                            <div key={header} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', padding: '16px' }}>
+                              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                                CSV Column: "{header}"
+                              </label>
+                              <select
+                                value={fieldMappings.find(m => m.csvColumn === header)?.userField || ''}
+                                onChange={(e) => updateFieldMapping(header, e.target.value)}
+                                style={{ width: '100%', border: '1px solid #D1D5DB', borderRadius: '6px', padding: '8px 12px', fontSize: '14px' }}
+                              >
+                                <option value="">Select user field...</option>
+                                {BulkImportService.getAvailableFields().map(field => (
+                                  <option key={field.field} value={field.field}>
+                                    {field.label} {field.required && '*'}
+                                  </option>
+                                ))}
+                              </select>
+                              {fieldMappings.find(m => m.csvColumn === header) && (
+                                <button
+                                  onClick={() => removeFieldMapping(header)}
+                                  style={{ marginTop: '8px', color: '#DC2626', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer' }}
+                                >
+                                  Remove mapping
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <button
+                            onClick={() => setImportStep('upload')}
+                            style={{ padding: '8px 16px', border: '1px solid #D1D5DB', borderRadius: '6px', color: '#374151', backgroundColor: 'white', cursor: 'pointer' }}
+                          >
+                            Back
+                          </button>
+                          <button
+                            onClick={handleFieldMapping}
+                            style={{ padding: '8px 24px', backgroundColor: '#3B82F6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                          >
+                            Preview Import
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 3: Preview */}
+                    {importStep === 'preview' && (
+                      <div>
+                        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                          Preview Import ({mappedUsers.length} users)
+                        </h2>
+                        <div style={{ backgroundColor: '#F9FAFB', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
+                          <h4 style={{ fontWeight: '500', marginBottom: '8px' }}>Mapped Fields:</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', fontSize: '14px' }}>
+                            {fieldMappings.map(mapping => (
+                              <div key={mapping.csvColumn} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: '#6B7280' }}>"{mapping.csvColumn}"</span>
+                                <span style={{ color: '#111827' }}>→ {mapping.userField}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: '256px', overflowY: 'auto', border: '1px solid #E5E7EB', borderRadius: '8px', marginBottom: '16px' }}>
+                          <table style={{ width: '100%', fontSize: '14px' }}>
+                            <thead style={{ backgroundColor: '#F9FAFB', position: 'sticky', top: 0 }}>
+                              <tr>
+                                <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #E5E7EB' }}>First Name</th>
+                                <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #E5E7EB' }}>Last Name</th>
+                                <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #E5E7EB' }}>Email</th>
+                                <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #E5E7EB' }}>Phone</th>
+                                <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #E5E7EB' }}>Title</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {mappedUsers.slice(0, 10).map((user, index) => (
+                                <tr key={index} style={{ borderTop: '1px solid #E5E7EB' }}>
+                                  <td style={{ padding: '12px' }}>{user.first_name}</td>
+                                  <td style={{ padding: '12px' }}>{user.last_name}</td>
+                                  <td style={{ padding: '12px' }}>{user.email}</td>
+                                  <td style={{ padding: '12px' }}>{user.phone || '-'}</td>
+                                  <td style={{ padding: '12px' }}>{user.title_position || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {mappedUsers.length > 10 && (
+                            <div style={{ padding: '12px', textAlign: 'center', color: '#6B7280', fontSize: '14px' }}>
+                              ... and {mappedUsers.length - 10} more users
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <button
+                            onClick={() => setImportStep('mapping')}
+                            style={{ padding: '8px 16px', border: '1px solid #D1D5DB', borderRadius: '6px', color: '#374151', backgroundColor: 'white', cursor: 'pointer' }}
+                          >
+                            Back
+                          </button>
+                          <button
+                            onClick={handleImport}
+                            disabled={importLoading}
+                            style={{ 
+                              padding: '8px 24px', 
+                              backgroundColor: importLoading ? '#9CA3AF' : '#10B981', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '6px', 
+                              cursor: importLoading ? 'not-allowed' : 'pointer' 
+                            }}
+                          >
+                            {importLoading ? 'Importing...' : 'Import Users'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 4: Import Complete */}
+                    {importStep === 'complete' && importResult && (
+                      <div>
+                        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                          Import Complete
+                        </h2>
+                        <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', textAlign: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10B981' }}>{importResult.totalRows}</div>
+                              <div style={{ fontSize: '14px', color: '#6B7280' }}>Total Rows</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10B981' }}>{importResult.successfulImports}</div>
+                              <div style={{ fontSize: '14px', color: '#6B7280' }}>Successful</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#DC2626' }}>{importResult.failedImports}</div>
+                              <div style={{ fontSize: '14px', color: '#6B7280' }}>Failed</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {importResult.errors.length > 0 && (
+                          <div style={{ marginBottom: '16px' }}>
+                            <h4 style={{ fontWeight: '500', marginBottom: '8px' }}>Errors:</h4>
+                            <div style={{ maxHeight: '128px', overflowY: 'auto', border: '1px solid #E5E7EB', borderRadius: '8px' }}>
+                              {importResult.errors.map((error, index) => (
+                                <div key={index} style={{ padding: '8px', borderBottom: '1px solid #E5E7EB', fontSize: '14px' }}>
+                                  <span style={{ fontWeight: '500' }}>Row {error.row}:</span> {error.error}
+                                  {error.email && <span style={{ color: '#6B7280' }}> ({error.email})</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <button
+                            onClick={resetImport}
+                            style={{ padding: '8px 16px', border: '1px solid #D1D5DB', borderRadius: '6px', color: '#374151', backgroundColor: 'white', cursor: 'pointer' }}
+                          >
+                            Import More Users
+                          </button>
+                          <button
+                            onClick={() => setUsersView('list')}
+                            style={{ padding: '8px 24px', backgroundColor: '#3B82F6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                          >
+                            View Users
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Quick Actions Section - Only show on dashboard */}
+            {currentView === 'dashboard' && (
+              <div style={{ marginBottom: '32px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+                  Quick Actions
+                </h2>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setShowCreateEventForm(true)}
+                    style={{
+                      backgroundColor: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '12px 24px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <span>📅</span>
+                    Create Event
+                  </button>
+                  <button
+                    onClick={() => handleNavigation('users')}
+                    style={{
+                      backgroundColor: '#8B5CF6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '12px 24px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <span>👥</span>
+                    Manage Users
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Events View */}
             {currentView === 'events' && (
               <>
@@ -1510,14 +2307,42 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               <p style={{ color: '#6B7280', marginBottom: '12px' }}>
                                 {event.description}
                               </p>
-                              <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280' }}>
+                              <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280', flexWrap: 'wrap' }}>
                                 <span>📅 {new Date(event.start_time).toLocaleDateString()}</span>
                                 <span>📍 {event.location?.name || 'Location TBD'}</span>
                                 {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
                                 {event.price && <span>💰 ${event.price / 100}</span>}
+                                {event.has_tracks && (
+                                  <span style={{ 
+                                    backgroundColor: '#3B82F6', 
+                                    color: 'white', 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '12px',
+                                    fontWeight: '500'
+                                  }}>
+                                    🎯 Track Selection Required
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
+                              {event.has_tracks && (
+                                <button
+                                  onClick={() => setSelectedEventForTracks(event)}
+                                  style={{
+                                    backgroundColor: '#3B82F6',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '8px 12px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Manage Tracks
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleEditEvent(event)}
                                 style={{
@@ -1552,6 +2377,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                             <div>
                               <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
                                 Activities ({event.activities.length})
+                                {event.has_tracks && (
+                                  <span style={{ 
+                                    fontSize: '12px', 
+                                    fontWeight: '400', 
+                                    color: '#6B7280',
+                                    marginLeft: '8px'
+                                  }}>
+                                    - Use "Manage Tracks" to assign activities to specific tracks
+                                  </span>
+                                )}
                               </h4>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                 {event.activities.map((activity, index) => (
@@ -1752,13 +2587,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
 
                   {/* Date and Time */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                        Start Date *
-                      </label>
+                  {/* Start Date & Time */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Start Date & Time *
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <input
-                        type="datetime-local"
+                        type="date"
                         value={eventFormData.startDate}
                         onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
                         required={!editingEvent}
@@ -1770,13 +2606,36 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                           fontSize: '14px'
                         }}
                       />
+                      <select
+                        value={eventFormData.startTime}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                        required={!editingEvent}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Select start time</option>
+                        {TIME_OPTIONS.map(time => (
+                          <option key={time.value} value={time.value}>
+                            {time.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                        End Date *
-                      </label>
+                  </div>
+
+                  {/* End Date & Time */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      End Date & Time *
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <input
-                        type="datetime-local"
+                        type="date"
                         value={eventFormData.endDate}
                         onChange={(e) => setEventFormData(prev => ({ ...prev, endDate: e.target.value }))}
                         required={!editingEvent}
@@ -1788,6 +2647,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                           fontSize: '14px'
                         }}
                       />
+                      <select
+                        value={eventFormData.endTime}
+                        onChange={(e) => setEventFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                        required={!editingEvent}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Select end time</option>
+                        {TIME_OPTIONS.map(time => (
+                          <option key={time.value} value={time.value}>
+                            {time.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -1842,6 +2720,74 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     </div>
                   </div>
 
+                  {/* Track Settings */}
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827', marginBottom: '16px' }}>Track Settings</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          name="hasTracks"
+                          checked={eventFormData.hasTracks}
+                          onChange={(e) => setEventFormData(prev => ({ ...prev, hasTracks: e.target.checked }))}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '14px', color: '#374151' }}>This event requires track selection for RSVPs</span>
+                      </label>
+                      {eventFormData.hasTracks && (
+                        <div style={{ 
+                          padding: '12px', 
+                          backgroundColor: '#F0F9FF', 
+                          border: '1px solid #3B82F6', 
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          color: '#1E40AF'
+                        }}>
+                          <strong>Track Selection Enabled:</strong> Attendees will need to select a track before their RSVP is confirmed. You can create and manage tracks after saving this event.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Visibility Controls */}
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827', marginBottom: '16px' }}>Visibility Settings</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          name="showCapacity"
+                          checked={eventFormData.showCapacity}
+                          onChange={(e) => setEventFormData(prev => ({ ...prev, showCapacity: e.target.checked }))}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '14px', color: '#374151' }}>Show capacity to attendees</span>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          name="showPrice"
+                          checked={eventFormData.showPrice}
+                          onChange={(e) => setEventFormData(prev => ({ ...prev, showPrice: e.target.checked }))}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '14px', color: '#374151' }}>Show price to attendees</span>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          name="showAttendeeCount"
+                          checked={eventFormData.showAttendeeCount}
+                          onChange={(e) => setEventFormData(prev => ({ ...prev, showAttendeeCount: e.target.checked }))}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '14px', color: '#374151' }}>Show attendee count to attendees</span>
+                      </label>
+                    </div>
+                  </div>
+
                   {/* Activities */}
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1864,12 +2810,69 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                         + Add Activity
                       </button>
                     </div>
-                    {activities.map((activity, index) => (
-                      <div key={index} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+                    {eventFormData.hasTracks && (
+                      <div style={{
+                        padding: '12px',
+                        backgroundColor: '#F0F9FF',
+                        border: '1px solid #3B82F6',
+                        borderRadius: '8px',
+                        marginBottom: '16px',
+                        fontSize: '14px',
+                        color: '#1E40AF'
+                      }}>
+                        <strong>Track Assignment:</strong> After saving this event, you can assign these activities to specific tracks using the "Manage Tracks" button. Activities not assigned to tracks will be available to all attendees.
+                      </div>
+                    )}
+                    <div style={{
+                      padding: '12px',
+                      backgroundColor: '#FEF3C7',
+                      border: '1px solid #F59E0B',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                      fontSize: '14px',
+                      color: '#92400E'
+                    }}>
+                      <strong>Required Fields:</strong> Activity name, start date, start time, end date, and end time are required. Activities with missing required fields will be skipped when saving.
+                      {activities.length > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                          {(() => {
+                            const validActivities = activities.filter(activity => 
+                              activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime
+                            ).length;
+                            const totalActivities = activities.length;
+                            return `${validActivities} of ${totalActivities} activities will be saved`;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                    {activities.map((activity, index) => {
+                      const isValid = activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime;
+                      return (
+                      <div key={index} style={{ 
+                        border: `1px solid ${isValid ? '#E5E7EB' : '#FCA5A5'}`, 
+                        borderRadius: '8px', 
+                        padding: '16px', 
+                        marginBottom: '12px',
+                        backgroundColor: isValid ? 'white' : '#FEF2F2'
+                      }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#374151' }}>
-                            Activity {index + 1}
-                          </h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                              Activity {index + 1}
+                            </h4>
+                            {!isValid && (
+                              <span style={{
+                                backgroundColor: '#FCA5A5',
+                                color: '#DC2626',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: '500'
+                              }}>
+                                Missing Required Fields
+                              </span>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => removeActivity(index)}
@@ -1914,33 +2917,82 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               resize: 'vertical'
                             }}
                           />
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                            <input
-                              type="datetime-local"
-                              placeholder="Start time"
-                              value={activity.startTime}
-                              onChange={(e) => updateActivity(index, 'startTime', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px',
-                                border: '1px solid #D1D5DB',
-                                borderRadius: '6px',
-                                fontSize: '14px'
-                              }}
-                            />
-                            <input
-                              type="datetime-local"
-                              placeholder="End time"
-                              value={activity.endTime}
-                              onChange={(e) => updateActivity(index, 'endTime', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px',
-                                border: '1px solid #D1D5DB',
-                                borderRadius: '6px',
-                                fontSize: '14px'
-                              }}
-                            />
+                          {/* Start Date & Time */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                              Start Date & Time *
+                            </label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <input
+                                type="date"
+                                value={activity.startDate}
+                                onChange={(e) => updateActivity(index, 'startDate', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '6px',
+                                  fontSize: '14px'
+                                }}
+                              />
+                              <select
+                                value={activity.startTime}
+                                onChange={(e) => updateActivity(index, 'startTime', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '6px',
+                                  fontSize: '14px'
+                                }}
+                              >
+                                <option value="">Start time</option>
+                                {TIME_OPTIONS.map(time => (
+                                  <option key={time.value} value={time.value}>
+                                    {time.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* End Date & Time */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
+                              End Date & Time *
+                            </label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <input
+                                type="date"
+                                value={activity.endDate}
+                                onChange={(e) => updateActivity(index, 'endDate', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '6px',
+                                  fontSize: '14px'
+                                }}
+                              />
+                              <select
+                                value={activity.endTime}
+                                onChange={(e) => updateActivity(index, 'endTime', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '6px',
+                                  fontSize: '14px'
+                                }}
+                              >
+                                <option value="">End time</option>
+                                {TIME_OPTIONS.map(time => (
+                                  <option key={time.value} value={time.value}>
+                                    {time.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                           <input
                             type="text"
@@ -1972,9 +3024,35 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               </option>
                             ))}
                           </select>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <input
+                              type="number"
+                              placeholder="Capacity (optional)"
+                              value={activity.capacity}
+                              onChange={(e) => updateActivity(index, 'capacity', e.target.value)}
+                              min="1"
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #D1D5DB',
+                                borderRadius: '6px',
+                                fontSize: '14px'
+                              }}
+                            />
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px' }}>
+                              <input
+                                type="checkbox"
+                                checked={activity.isRequired}
+                                onChange={(e) => updateActivity(index, 'isRequired', e.target.checked)}
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              <span style={{ fontSize: '14px', color: '#374151' }}>Required</span>
+                            </label>
+                          </div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -2018,6 +3096,67 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
           </div>
         </div>
       )}
+
+      {/* Track Management Modal */}
+      {selectedEventForTracks && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            width: '90vw',
+            height: '90vh',
+            maxWidth: '1200px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <TrackManagement
+              event={selectedEventForTracks}
+              onClose={() => setSelectedEventForTracks(null)}
+              onEventUpdated={() => {
+                loadEvents();
+                setSelectedEventForTracks(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Manual User Creation Modal */}
+      {showManualUserCreation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <ManualUserCreation
+            onUserCreated={() => {
+              loadUsers();
+              setShowManualUserCreation(false);
+            }}
+            onClose={() => setShowManualUserCreation(false)}
+          />
+        </div>
+      )}
+
     </div>
   );
 };

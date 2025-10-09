@@ -1,0 +1,6 @@
+first_name,last_name,email,phone,title_position,organization_affiliation,t_shirt_size,dietary_restrictions,accessibility_needs
+John,Doe,john.doe@example.com,555-0101,Software Engineer,TechCorp,L,None,None
+Jane,Smith,jane.smith@example.com,555-0102,Product Manager,StartupIO,M,Vegetarian,None
+Mike,Johnson,mike.johnson@example.com,555-0103,Designer,DesignStudio,XL,None,Wheelchair Access
+Sarah,Wilson,sarah.wilson@example.com,555-0104,Marketing Director,MarketingPro,S,Gluten-Free,None
+David,Brown,david.brown@example.com,555-0105,Data Scientist,DataCorp,L,None,None

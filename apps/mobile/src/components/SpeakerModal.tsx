@@ -5,12 +5,12 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Image,
   StyleSheet,
   Dimensions,
   SafeAreaView,
 } from 'react-native';
 import { Speaker } from '../services/speakersService';
+import AvatarComponent from './AvatarComponent';
 
 interface SpeakerModalProps {
   visible: boolean;
@@ -62,15 +62,11 @@ const SpeakerModal: React.FC<SpeakerModalProps> = ({ visible, speaker, onClose }
           {/* Profile Section */}
           <View style={styles.profileSection}>
             <View style={styles.avatarContainer}>
-              {speaker.profileImageUrl ? (
-                <Image source={{ uri: speaker.profileImageUrl }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarPlaceholderText}>
-                    {speaker.firstName[0]}{speaker.lastName[0]}
-                  </Text>
-                </View>
-              )}
+              <AvatarComponent
+                name={`${speaker.firstName} ${speaker.lastName}`}
+                size={100}
+                fallbackText="??"
+              />
             </View>
             
             <Text style={styles.name}>
@@ -180,24 +176,6 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginBottom: 16,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarPlaceholderText: {
-    fontSize: 36,
-    fontWeight: '600',
-    color: 'white',
   },
   name: {
     fontSize: 28,
