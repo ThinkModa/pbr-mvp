@@ -15,6 +15,7 @@ import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
 import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
 import ManualUserCreation from '../components/ManualUserCreation';
+import { UserRoleManagement } from '../components/UserRoleManagement';
 
 // Activity categories with colors and icons
 const ACTIVITY_CATEGORIES = [
@@ -98,6 +99,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
   // Events state
   const [events, setEvents] = useState<EventWithActivities[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<EventWithActivities[]>([]);
   const [showCreateEventForm, setShowCreateEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithActivities | null>(null);
   const [selectedEventForTracks, setSelectedEventForTracks] = useState<EventWithActivities | null>(null);
@@ -106,7 +108,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
-  const [usersView, setUsersView] = useState<'list' | 'bulk-import'>('list');
+  const [usersView, setUsersView] = useState<'list' | 'bulk-import' | 'role-management'>('list');
   const [showManualUserCreation, setShowManualUserCreation] = useState(false);
 
   // Bulk import state
@@ -342,6 +344,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       setEventsError(null);
       const eventsData = await EventsService.getEvents();
       setEvents(eventsData);
+      
+      // Get the 3 most upcoming events
+      const now = new Date();
+      const upcoming = eventsData
+        .filter(event => {
+          const eventDate = new Date(event.start_date);
+          return eventDate > now;
+        })
+        .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime())
+        .slice(0, 3);
+      
+      setUpcomingEvents(upcoming);
     } catch (error) {
       console.error('Error loading events:', error);
       setEventsError('Failed to load events');
@@ -356,20 +370,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       setUsersLoading(true);
       setUsersError(null);
       
-      // Fetch users from Supabase
-      const { data: usersData, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Use the roleManagement utility to get all users with their roles
+      const { roleManagement } = await import('../utils/roleManagement');
+      const result = await roleManagement.getAllUsersWithRoles();
       
-      if (error) {
-        throw error;
+      if (result.success) {
+        setUsers(result.users);
+        console.log('✅ Loaded users:', result.users.length);
+      } else {
+        setUsersError(result.error || 'Failed to load users');
+        console.error('❌ Error loading users:', result.error);
       }
-      
-      setUsers(usersData || []);
-      console.log('✅ Loaded users:', usersData?.length || 0);
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('❌ Exception loading users:', error);
       setUsersError('Failed to load users');
     } finally {
       setUsersLoading(false);
@@ -805,10 +818,34 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
             Upcoming Events
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '14px', color: '#6b7280' }}>Bear Hug: Live in Concert</div>
-            <div style={{ fontSize: '14px', color: '#6b7280' }}>Six Fingers — DJ Set</div>
-            <div style={{ fontSize: '14px', color: '#6b7280' }}>We All Look The Same</div>
-            <div style={{ fontSize: '14px', color: '#6b7280' }}>Viking People</div>
+            {upcomingEvents.length === 0 ? (
+              <div style={{ fontSize: '14px', color: '#6b7280' }}>No upcoming events</div>
+            ) : (
+              upcomingEvents.map((event) => (
+                <div 
+                  key={event.id}
+                  onClick={() => setCurrentView('events')}
+                  style={{ 
+                    fontSize: '14px', 
+                    color: '#6b7280',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    borderRadius: '4px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#F3F4F6';
+                    e.currentTarget.style.color = '#111827';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#6b7280';
+                  }}
+                >
+                  {event.title}
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -1637,6 +1674,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
             {/* Users View */}
             {currentView === 'users' && (
               <>
+                {console.log('DashboardPage: Users View is being rendered, usersView is:', usersView)}
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
                   <h1 style={{ fontSize: '30px', fontWeight: 'bold', color: '#111827' }}>
@@ -1772,32 +1810,29 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                 Contact
                               </th>
                               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                RSVP Status
+                                Events
                               </th>
                               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Track
-                              </th>
-                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                RSVP Date
+                                Role
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {usersLoading ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={4}>
                                   Loading users...
                                 </td>
                               </tr>
                             ) : usersError ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#DC2626' }} colSpan={5}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#DC2626' }} colSpan={4}>
                                   Error: {usersError}
                                 </td>
                               </tr>
                             ) : users.length === 0 ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={4}>
                                   No users found. Use the "Create User" button or Bulk Import tab to add users.
                                 </td>
                               </tr>
@@ -1827,23 +1862,62 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                       {user.phone_number || 'No phone'}
                                     </div>
                                   </td>
-                                  <td style={{ padding: '16px' }}>
+                                  <td style={{ padding: '16px', color: '#6B7280', fontSize: '14px' }}>
                                     <span style={{ 
                                       padding: '4px 8px', 
                                       borderRadius: '4px', 
                                       fontSize: '12px', 
                                       fontWeight: '500',
-                                      backgroundColor: user.status === 'active' ? '#DCFCE7' : '#FEF3C7',
-                                      color: user.status === 'active' ? '#15803D' : '#D97706'
+                                      backgroundColor: '#E5E7EB',
+                                      color: '#6B7280'
                                     }}>
-                                      {user.status || 'pending'}
+                                      {user.events_attended || 0} events
                                     </span>
                                   </td>
-                                  <td style={{ padding: '16px', color: '#6B7280', fontSize: '14px' }}>
-                                    -
-                                  </td>
-                                  <td style={{ padding: '16px', color: '#6B7280', fontSize: '14px' }}>
-                                    {new Date(user.created_at).toLocaleDateString()}
+                                  <td style={{ padding: '16px' }}>
+                                    <select
+                                      value={user.role || 'general'}
+                                      onChange={async (e) => {
+                                        const newRole = e.target.value as 'admin' | 'business' | 'general';
+                                        try {
+                                          // Use the roleManagement utility to change the role
+                                          const { roleManagement } = await import('../utils/roleManagement');
+                                          const result = await roleManagement.changeUserRole(
+                                            user.id,
+                                            newRole,
+                                            '11111111-1111-1111-1111-111111111111', // Mock admin user ID
+                                          );
+                                          
+                                          if (result.success) {
+                                            // Update local state
+                                            setUsers(prevUsers => 
+                                              prevUsers.map(u => 
+                                                u.id === user.id ? { ...u, role: newRole } : u
+                                              )
+                                            );
+                                            alert(`User role updated to ${newRole}`);
+                                          } else {
+                                            alert(`Failed to update role: ${result.error}`);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error changing user role:', error);
+                                          alert('Error changing user role');
+                                        }
+                                      }}
+                                      style={{
+                                        padding: '6px 10px',
+                                        border: '1px solid #D1D5DB',
+                                        borderRadius: '6px',
+                                        fontSize: '14px',
+                                        backgroundColor: 'white',
+                                        cursor: 'pointer',
+                                        minWidth: '100px'
+                                      }}
+                                    >
+                                      <option value="general">General</option>
+                                      <option value="business">Business</option>
+                                      <option value="admin">Admin</option>
+                                    </select>
                                   </td>
                                 </tr>
                               ))
@@ -2411,16 +2485,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     </div>
                   </div>
                 )}
+
               </>
             )}
 
-            {/* Users View - Placeholder */}
-            {currentView === 'users' && (
-              <div style={{ textAlign: 'center', padding: '48px' }}>
-                <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', marginBottom: '16px' }}>Users</h1>
-                <p style={{ color: '#6b7280' }}>Mobile app users management will be integrated here.</p>
-              </div>
-            )}
 
             {/* Settings View - Placeholder */}
             {currentView === 'settings' && (

@@ -13,7 +13,7 @@ import {
   AppRegistry,
   FlatList,
 } from 'react-native';
-import { MockAuthProvider, useAuth } from './src/contexts/MockAuthContext';
+import { AuthProvider, useAuth } from './src/contexts/EnhancedAuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import MainApp from './src/components/MainApp';
 
@@ -42,9 +42,9 @@ const AppContent: React.FC = () => {
 // Main App Component
 export default function App() {
   return (
-    <MockAuthProvider>
+    <AuthProvider>
       <AppContent />
-    </MockAuthProvider>
+    </AuthProvider>
   );
 }
 

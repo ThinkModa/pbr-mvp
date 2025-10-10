@@ -12,7 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/EnhancedAuthContext';
 
 interface AuthScreenProps {
   onAuthSuccess: () => void;

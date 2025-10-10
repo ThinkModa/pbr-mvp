@@ -17,7 +17,7 @@ import {
   Platform,
 } from 'react-native';
 // import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/EnhancedAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker } from '../services/speakersService';

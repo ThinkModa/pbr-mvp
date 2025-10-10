@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { TrackService, EventTrack } from '../services/trackService';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/EnhancedAuthContext';
 
 interface Event {
   id: string;

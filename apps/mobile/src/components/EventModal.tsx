@@ -18,7 +18,7 @@ import { CalendarService, CalendarEvent } from '../services/calendarService';
 import { SpeakersService, EventSpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/EnhancedAuthContext';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
