@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { TrackService, EventTrack } from '../services/trackService';
 import { RSVPService } from '../services/rsvpService';
-import { useAuth } from '../contexts/EnhancedAuthContext';
+import { useAuth } from '../contexts/SupabaseAuthContext';
 
 interface Event {
   id: string;
