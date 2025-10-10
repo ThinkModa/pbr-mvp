@@ -1,25 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { createClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
-// Fallback storage for Expo Go compatibility
-let AsyncStorage: any;
-try {
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch (error) {
-  // Fallback for Expo Go - use in-memory storage
-  console.log('AsyncStorage not available, using in-memory storage');
-  AsyncStorage = {
-    getItem: async (key: string) => {
-      return global.__expoStorage?.[key] || null;
-    },
-    setItem: async (key: string, value: string) => {
-      if (!global.__expoStorage) global.__expoStorage = {};
-      global.__expoStorage[key] = value;
-    },
-    removeItem: async (key: string) => {
-      if (global.__expoStorage) delete global.__expoStorage[key];
-    },
-  };
-}
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-url-polyfill/auto';
 import { Database } from '../../../packages/database/src/types';
 
