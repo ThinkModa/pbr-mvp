@@ -1,8 +1,9 @@
 // RSVP service for managing event and activity RSVPs
-// Uses REST API calls to avoid Supabase client compatibility issues with Expo Go
+// Uses centralized Supabase client for consistent database configuration
 // Connects directly to live Supabase database
 
 import { ProfileCompleteness } from './profileService';
+import { supabase } from '../lib/supabase';
 
 export type RSVPStatus = 'attending' | 'not_attending' | 'maybe' | 'waitlist' | 'pending';
 
@@ -57,18 +58,6 @@ export interface RSVPStats {
 }
 
 export class RSVPService {
-  // Use the network IP address that Expo Go can reach
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
-
-  // Get RSVP headers for API calls
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Create a pending RSVP (for track selection)
   static async createPendingRSVP(eventId: string, userId: string): Promise<EventRSVP> {
@@ -82,35 +71,25 @@ export class RSVPService {
       return await this.updateEventRSVP(existingRSVP.id, 'pending');
     } else {
       // Create new pending RSVP
-      const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .insert({
           event_id: eventId,
           user_id: userId,
           status: 'pending',
           guest_count: 1,
           is_approved: true,
-        }),
-      });
+        })
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error creating pending RSVP:', errorText);
-        throw new Error(`Failed to create pending RSVP: ${errorText}`);
-      }
-
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
-      
-      if (!responseText.trim()) {
-        console.log('✅ Pending RSVP created (empty response)');
-        return { id: 'created', event_id: eventId, user_id: userId, status: 'pending' };
+      if (error) {
+        console.error('Error creating pending RSVP:', error);
+        throw new Error(`Failed to create pending RSVP: ${error.message}`);
       }
       
-      const rsvp = JSON.parse(responseText);
-      console.log('✅ Pending RSVP created:', rsvp);
-      return rsvp;
+      console.log('✅ Pending RSVP created:', data.id);
+      return data;
     }
   }
 
@@ -141,30 +120,19 @@ export class RSVPService {
         rsvpData.track_id = trackId;
       }
       
-      const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(rsvpData),
-      });
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .insert(rsvpData)
+        .select()
+        .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error creating event RSVP:', errorText);
-      throw new Error(`Failed to create event RSVP: ${errorText}`);
-    }
+      if (error) {
+        console.error('Error creating event RSVP:', error);
+        throw new Error(`Failed to create event RSVP: ${error.message}`);
+      }
 
-    const responseText = await response.text();
-    console.log('Response text:', responseText);
-    
-    if (!responseText.trim()) {
-      // Empty response - this is actually success for some operations
-      console.log('✅ Event RSVP created (empty response)');
-      return { id: 'created', event_id: eventId, user_id: userId, status };
-    }
-    
-    const rsvp = JSON.parse(responseText);
-    console.log('✅ Event RSVP created:', rsvp);
-    return rsvp;
+      console.log('✅ Event RSVP created:', data.id);
+      return data;
     }
   }
 
@@ -201,45 +169,34 @@ export class RSVPService {
       updateData.track_id = trackId;
     }
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps?id=eq.${rsvpId}`, {
-      method: 'PATCH',
-      headers: this.getHeaders(),
-      body: JSON.stringify(updateData),
-    });
+    const { data, error } = await supabase
+      .from('event_rsvps')
+      .update(updateData)
+      .eq('id', rsvpId)
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error updating event RSVP:', errorText);
-      throw new Error(`Failed to update event RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error updating event RSVP:', error);
+      throw new Error(`Failed to update event RSVP: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Update response text:', responseText);
-    
-    if (!responseText.trim()) {
-      // Empty response - this is actually success for PATCH operations
-      console.log('✅ Event RSVP updated (empty response)');
-      return { id: rsvpId, status } as EventRSVP;
-    }
-    
-    const rsvp = JSON.parse(responseText);
-    console.log('✅ Event RSVP updated:', rsvp);
-    return rsvp[0];
+    console.log('✅ Event RSVP updated:', data.id);
+    return data;
   }
 
   // Delete event RSVP
   static async deleteEventRSVP(rsvpId: string): Promise<void> {
     console.log('Deleting event RSVP:', { rsvpId });
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps?id=eq.${rsvpId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
+    const { error } = await supabase
+      .from('event_rsvps')
+      .delete()
+      .eq('id', rsvpId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error deleting event RSVP:', errorText);
-      throw new Error(`Failed to delete event RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error deleting event RSVP:', error);
+      throw new Error(`Failed to delete event RSVP: ${error.message}`);
     }
 
     console.log('✅ Event RSVP deleted');
@@ -249,58 +206,40 @@ export class RSVPService {
   static async getUserEventRSVP(eventId: string, userId: string): Promise<EventRSVP | null> {
     console.log('Getting user event RSVP:', { eventId, userId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_rsvps?event_id=eq.${eventId}&user_id=eq.${userId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: rsvps, error } = await supabase
+      .from('event_rsvps')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('user_id', userId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting user event RSVP:', errorText);
-      throw new Error(`Failed to get user event RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error getting user event RSVP:', error);
+      throw new Error(`Failed to get user event RSVP: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get RSVP response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No user event RSVP found (empty response)');
+    if (!rsvps || rsvps.length === 0) {
+      console.log('✅ No user event RSVP found');
       return null;
     }
     
-    const rsvps = JSON.parse(responseText);
-    console.log('✅ Retrieved user event RSVP:', rsvps);
-    return rsvps.length > 0 ? rsvps[0] : null;
+    console.log('✅ Retrieved user event RSVP:', rsvps[0]);
+    return rsvps[0];
   }
 
   // Get all user's event RSVPs
   static async getUserEventRSVPs(userId: string): Promise<EventRSVP[]> {
     console.log('Getting user event RSVPs:', { userId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_rsvps?user_id=eq.${userId}&order=created_at.desc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: rsvps, error } = await supabase
+      .from('event_rsvps')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting user event RSVPs:', errorText);
-      throw new Error(`Failed to get user event RSVPs: ${errorText}`);
+    if (error) {
+      console.error('Error getting user event RSVPs:', error);
+      throw new Error(`Failed to get user event RSVPs: ${error.message}`);
     }
-
-    const responseText = await response.text();
-    console.log('Get RSVPs response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No user event RSVPs found (empty response)');
-      return [];
-    }
-    
-    const rsvps = JSON.parse(responseText);
     console.log('✅ Retrieved user event RSVPs:', rsvps.length);
     return rsvps;
   }
@@ -309,20 +248,15 @@ export class RSVPService {
   static async getEventRSVPStats(eventId: string): Promise<RSVPStats> {
     console.log('Getting event RSVP stats:', { eventId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_rsvps?event_id=eq.${eventId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: rsvps, error } = await supabase
+      .from('event_rsvps')
+      .select('*')
+      .eq('event_id', eventId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting event RSVP stats:', errorText);
-      throw new Error(`Failed to get event RSVP stats: ${errorText}`);
+    if (error) {
+      console.error('Error getting event RSVP stats:', error);
+      throw new Error(`Failed to get event RSVP stats: ${error.message}`);
     }
-
-    const rsvps = await response.json();
     
     const stats: RSVPStats = {
       going: rsvps.filter((r: EventRSVP) => r.status === 'attending').length,
@@ -340,23 +274,20 @@ export class RSVPService {
   static async createActivityRSVP(activityId: string, userId: string, status: RSVPStatus): Promise<ActivityRSVP> {
     console.log('Creating activity RSVP:', { activityId, userId, status });
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_rsvps`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({
+    const { data: rsvp, error } = await supabase
+      .from('activity_rsvps')
+      .insert({
         activity_id: activityId,
         user_id: userId,
         status: status,
-      }),
-    });
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error creating activity RSVP:', errorText);
-      throw new Error(`Failed to create activity RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error creating activity RSVP:', error);
+      throw new Error(`Failed to create activity RSVP: ${error.message}`);
     }
-
-    const rsvp = await response.json();
     console.log('✅ Activity RSVP created:', rsvp);
     return rsvp;
   }
@@ -365,54 +296,33 @@ export class RSVPService {
   static async getUserActivityRSVP(activityId: string, userId: string): Promise<ActivityRSVP | null> {
     console.log('Getting user activity RSVP:', { activityId, userId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/activity_rsvps?activity_id=eq.${activityId}&user_id=eq.${userId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: rsvps, error } = await supabase
+      .from('activity_rsvps')
+      .select('*')
+      .eq('activity_id', activityId)
+      .eq('user_id', userId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting user activity RSVP:', errorText);
-      throw new Error(`Failed to get user activity RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error getting user activity RSVP:', error);
+      throw new Error(`Failed to get user activity RSVP: ${error.message}`);
     }
 
-    const rsvps = await response.json();
-    return rsvps.length > 0 ? rsvps[0] : null;
+    return rsvps && rsvps.length > 0 ? rsvps[0] : null;
   }
 
-  // Delete RSVP (cancel RSVP)
-  static async deleteEventRSVP(rsvpId: string): Promise<void> {
-    console.log('Deleting event RSVP:', { rsvpId });
-    
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/event_rsvps?id=eq.${rsvpId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error deleting event RSVP:', errorText);
-      throw new Error(`Failed to delete event RSVP: ${errorText}`);
-    }
-
-    console.log('✅ Event RSVP deleted');
-  }
 
   // Delete activity RSVP
   static async deleteActivityRSVP(rsvpId: string): Promise<void> {
     console.log('Deleting activity RSVP:', { rsvpId });
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/activity_rsvps?id=eq.${rsvpId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
+    const { error } = await supabase
+      .from('activity_rsvps')
+      .delete()
+      .eq('id', rsvpId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error deleting activity RSVP:', errorText);
-      throw new Error(`Failed to delete activity RSVP: ${errorText}`);
+    if (error) {
+      console.error('Error deleting activity RSVP:', error);
+      throw new Error(`Failed to delete activity RSVP: ${error.message}`);
     }
 
     console.log('✅ Activity RSVP deleted');
@@ -422,29 +332,17 @@ export class RSVPService {
   static async getActivityRSVPs(activityId: string): Promise<ActivityRSVP[]> {
     console.log('Getting activity RSVPs:', { activityId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/activity_rsvps?activity_id=eq.${activityId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: rsvps, error } = await supabase
+      .from('activity_rsvps')
+      .select('*')
+      .eq('activity_id', activityId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting activity RSVPs:', errorText);
-      throw new Error(`Failed to get activity RSVPs: ${errorText}`);
+    if (error) {
+      console.error('Error getting activity RSVPs:', error);
+      throw new Error(`Failed to get activity RSVPs: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get activity RSVPs response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No activity RSVPs found (empty response)');
-      return [];
-    }
-    
-    const rsvps = JSON.parse(responseText);
-    console.log('✅ Retrieved activity RSVPs:', rsvps);
-    return rsvps;
+    console.log('✅ Retrieved activity RSVPs:', rsvps.length);
+    return rsvps || [];
   }
 }

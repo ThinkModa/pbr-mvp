@@ -1,8 +1,10 @@
-// Real events service that fetches from Supabase via REST API
-// This avoids Supabase client compatibility issues with Expo Go
+// Real events service that uses centralized Supabase client
+// This ensures consistent database configuration across all services
 //
 // CRITICAL RULE: Test environment must ALWAYS use live database data, never mock data.
 // This ensures real-time sync between desktop admin and mobile app for true integration testing.
+
+import { supabase } from '../lib/supabase';
 
 export interface EventWithActivities {
   id: string;
@@ -37,37 +39,29 @@ export interface Activity {
 }
 
 export class EventsService {
-  // Use the network IP address that Expo Go can reach
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
   // Get all published events with their activities
   static async getEvents(): Promise<EventWithActivities[]> {
     console.log('Fetching events from live Supabase database...');
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/events?select=*,activities(*)&is_public=eq.true&status=eq.published&order=start_time.asc`,
-      {
-        headers: {
-          'apikey': this.SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const { data: events, error } = await supabase
+      .from('events')
+      .select(`
+        *,
+        activities(*)
+      `)
+      .eq('is_public', true)
+      .eq('status', 'published')
+      .order('start_time', { ascending: true });
 
-    console.log('Response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error:', errorText);
-      throw new Error(`Failed to fetch events from live database. HTTP ${response.status}: ${errorText}`);
+    if (error) {
+      console.error('Failed to fetch events:', error);
+      throw new Error(`Failed to fetch events: ${error.message}`);
     }
 
-    const events = await response.json();
-    console.log('✅ Successfully fetched', events.length, 'events from live database');
+    console.log('✅ Successfully fetched', events?.length || 0, 'events from live database');
     
     // Debug: Log the first event's activities
-    if (events.length > 0) {
+    if (events && events.length > 0) {
       console.log('First event activities:', events[0].activities);
       if (events[0].activities && events[0].activities.length > 0) {
         console.log('First activity details:', events[0].activities[0]);
@@ -104,25 +98,18 @@ export class EventsService {
   static async getEventActivities(eventId: string): Promise<Activity[]> {
     console.log('Fetching activities for event:', eventId);
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/activities?event_id=eq.${eventId}&order=start_time.asc`,
-      {
-        headers: {
-          'apikey': this.SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const { data: activities, error } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('start_time', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error fetching event activities:', errorText);
-      throw new Error(`Failed to fetch event activities: ${errorText}`);
+    if (error) {
+      console.error('Error fetching event activities:', error);
+      throw new Error(`Failed to fetch event activities: ${error.message}`);
     }
 
-    const activities = await response.json();
-    console.log('✅ Successfully fetched', activities.length, 'activities for event', eventId);
+    console.log('✅ Successfully fetched', activities?.length || 0, 'activities for event', eventId);
     return activities || [];
   }
 }

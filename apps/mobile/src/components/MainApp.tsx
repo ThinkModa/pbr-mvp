@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 // import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
 import { useAuth } from '../contexts/SupabaseAuthContext';
+import { supabase } from '../lib/supabase';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker } from '../services/speakersService';
@@ -2891,21 +2892,15 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     setLoadingUsers(true);
     try {
       // Fetch all users except the current user
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id,name,email,avatar_url')
+        .neq('id', user?.id || '');
       
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/users?select=id,name,email,avatar_url&id=neq.${user?.id}`, {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      });
-      
-      if (response.ok) {
-        const users = await response.json();
+      if (!error && users) {
         setAvailableUsers(users);
       } else {
-        console.error('Failed to load users:', response.statusText);
+        console.error('Failed to load users:', error);
         setAvailableUsers([]);
       }
     } catch (error) {
@@ -3598,22 +3593,14 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingMembers(true);
     try {
       // Get members from chat_memberships table
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/chat_memberships?select=*,users(*)&thread_id=eq.${threadId}&is_active=eq.true`,
-        {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const { data: memberships, error } = await supabase
+        .from('chat_memberships')
+        .select('*,users(*)')
+        .eq('thread_id', threadId)
+        .eq('is_active', true);
 
-      if (response.ok) {
-        const members = await response.json();
-        setThreadMembers(members);
+      if (!error && memberships) {
+        setThreadMembers(memberships);
       }
     } catch (err) {
       console.error('Error loading thread members:', err);
@@ -3626,22 +3613,13 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingUsersForAdd(true);
     try {
       // Get all users except current members
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
       const currentMemberIds = threadMembers.map(member => member.user_id);
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/users?select=id,name,email&id=not.in.(${currentMemberIds.join(',')})`,
-        {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id,name,email')
+        .not('id', 'in', `(${currentMemberIds.join(',')})`);
 
-      if (response.ok) {
-        const users = await response.json();
+      if (!error && users) {
         setAvailableUsersForAdd(users);
       }
     } catch (err) {

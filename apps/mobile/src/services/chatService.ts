@@ -1,6 +1,8 @@
 // Chat service for mobile app
 // Handles CRUD operations for chat threads, messages, and memberships
-// Uses REST API to avoid Supabase client compatibility issues with Expo Go
+// Uses centralized Supabase client for consistent database configuration
+
+import { supabase } from '../lib/supabase';
 
 export interface ChatThread {
   id: string;
@@ -89,17 +91,6 @@ export interface ChatMembership {
 }
 
 export class ChatService {
-  // Use the network IP address that Expo Go can reach
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
-
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Get chat threads for a user (with filters for announcements, group chats, direct messages)
   static async getUserThreads(
@@ -108,39 +99,37 @@ export class ChatService {
   ): Promise<ChatThread[]> {
     console.log('Getting user threads:', { userId, type });
     
-    let query = `${this.SUPABASE_URL}/rest/v1/chat_threads?select=*,chat_memberships!inner(user_id,unread_count,last_read_at)`;
+    let supabaseQuery = supabase
+      .from('chat_threads')
+      .select(`
+        *,
+        chat_memberships!inner(user_id,unread_count,last_read_at)
+      `)
+      .eq('chat_memberships.user_id', userId)
+      .eq('chat_memberships.is_active', true)
+      .order('last_message_at', { ascending: false, nullsFirst: false });
     
     // Add type filter
     if (type === 'announcements') {
-      query += '&type=eq.event&event_id=not.is.null';
+      supabaseQuery = supabaseQuery.eq('type', 'event').not('event_id', 'is', null);
     } else if (type === 'group') {
-      query += '&type=in.(group,event)';
+      supabaseQuery = supabaseQuery.in('type', ['group', 'event']);
     } else if (type === 'direct') {
-      query += '&type=eq.dm';
-    }
-    
-    // Filter by user membership
-    query += `&chat_memberships.user_id=eq.${userId}&chat_memberships.is_active=eq.true`;
-    
-    // Order by last message time
-    query += '&order=last_message_at.desc.nullslast';
-
-    const response = await fetch(query, {
-      headers: this.getHeaders(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting user threads:', errorText);
-      throw new Error(`Failed to get user threads: ${errorText}`);
+      supabaseQuery = supabaseQuery.eq('type', 'dm');
     }
 
-    const threads = await response.json();
-    console.log('✅ Retrieved user threads:', threads.length);
+    const { data: threads, error } = await supabaseQuery;
+
+    if (error) {
+      console.error('Error fetching user threads:', error);
+      throw new Error(`Failed to get user threads: ${error.message}`);
+    }
+
+    console.log('✅ Retrieved user threads:', threads?.length || 0);
     
     // Transform and enrich the data
     const enrichedThreads = await Promise.all(
-      threads.map(async (thread: any) => {
+      (threads || []).map(async (thread: any) => {
         const enriched = await this.enrichThread(thread, userId);
         return enriched;
       })
@@ -153,20 +142,17 @@ export class ChatService {
   static async getThreadMessages(threadId: string, limit: number = 50): Promise<ChatMessage[]> {
     console.log('Getting thread messages:', { threadId, limit });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_messages?thread_id=eq.${threadId}&order=created_at.desc&limit=${limit}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: messages, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting thread messages:', errorText);
-      throw new Error(`Failed to get thread messages: ${errorText}`);
+    if (error) {
+      console.error('Error getting thread messages:', error);
+      throw new Error(`Failed to get thread messages: ${error.message}`);
     }
-
-    const messages = await response.json();
     console.log('✅ Retrieved thread messages:', messages.length);
     
     // Transform and enrich the data
@@ -198,37 +184,15 @@ export class ChatService {
       attachments,
     };
 
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_messages`,
-      {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(messageData),
-      }
-    );
+    const { data: message, error } = await supabase
+      .from('chat_messages')
+      .insert(messageData)
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error sending message:', errorText);
-      throw new Error(`Failed to send message: ${errorText}`);
-    }
-
-    const responseText = await response.text();
-    console.log('Message sending response text:', responseText);
-    
-    let message;
-    if (responseText.trim() === '') {
-      // Empty response is normal for successful POST operations in Supabase
-      console.log('Empty response received, fetching sent message...');
-      message = await this.fetchMostRecentMessage(threadId);
-    } else {
-      try {
-        message = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Failed to parse response as JSON:', parseError);
-        console.error('Response text was:', responseText);
-        throw new Error(`Invalid JSON response: ${responseText}`);
-      }
+    if (error) {
+      console.error('Error sending message:', error);
+      throw new Error(`Failed to send message: ${error.message}`);
     }
     
     console.log('✅ Message sent:', message.id);
@@ -254,19 +218,13 @@ export class ChatService {
       is_active: true,
     };
 
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_memberships`,
-      {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(membershipData),
-      }
-    );
+    const { error } = await supabase
+      .from('chat_memberships')
+      .insert(membershipData);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error joining thread:', errorText);
-      throw new Error(`Failed to join thread: ${errorText}`);
+    if (error) {
+      console.error('Error joining thread:', error);
+      throw new Error(`Failed to join thread: ${error.message}`);
     }
 
     console.log('✅ Joined thread:', threadId);
@@ -276,22 +234,18 @@ export class ChatService {
   static async leaveThread(threadId: string, userId: string): Promise<void> {
     console.log('Leaving thread:', { threadId, userId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${threadId}&user_id=eq.${userId}`,
-      {
-        method: 'PATCH',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          is_active: false,
-          left_at: new Date().toISOString(),
-        }),
-      }
-    );
+    const { error } = await supabase
+      .from('chat_memberships')
+      .update({
+        is_active: false,
+        left_at: new Date().toISOString(),
+      })
+      .eq('thread_id', threadId)
+      .eq('user_id', userId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error leaving thread:', errorText);
-      throw new Error(`Failed to leave thread: ${errorText}`);
+    if (error) {
+      console.error('Error leaving thread:', error);
+      throw new Error(`Failed to leave thread: ${error.message}`);
     }
 
     console.log('✅ Left thread:', threadId);
@@ -301,22 +255,18 @@ export class ChatService {
   static async markMessagesAsRead(threadId: string, userId: string): Promise<void> {
     console.log('Marking messages as read:', { threadId, userId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${threadId}&user_id=eq.${userId}`,
-      {
-        method: 'PATCH',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          last_read_at: new Date().toISOString(),
-          unread_count: 0,
-        }),
-      }
-    );
+    const { error } = await supabase
+      .from('chat_memberships')
+      .update({
+        last_read_at: new Date().toISOString(),
+        unread_count: 0,
+      })
+      .eq('thread_id', threadId)
+      .eq('user_id', userId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error marking messages as read:', errorText);
-      throw new Error(`Failed to mark messages as read: ${errorText}`);
+    if (error) {
+      console.error('Error marking messages as read:', error);
+      throw new Error(`Failed to mark messages as read: ${error.message}`);
     }
 
     console.log('✅ Messages marked as read');
@@ -340,43 +290,15 @@ export class ChatService {
       allow_file_uploads: true,
     };
 
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads`,
-      {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(threadData),
-      }
-    );
+    const { data: thread, error } = await supabase
+      .from('chat_threads')
+      .insert(threadData)
+      .select()
+      .single();
 
-    console.log('Direct message thread creation response:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Direct message thread creation failed:', errorText);
-      throw new Error(`Failed to create direct message thread: ${response.status} ${errorText}`);
-    }
-
-    const responseText = await response.text();
-    console.log('Direct message thread creation response text:', responseText);
-    
-    let thread;
-    if (responseText.trim() === '') {
-      // Empty response is normal for successful POST operations in Supabase
-      console.log('Empty response received, fetching created thread...');
-      thread = await this.fetchMostRecentThread(userId1);
-    } else {
-      try {
-        thread = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Failed to parse response as JSON:', parseError);
-        console.error('Response text was:', responseText);
-        throw new Error(`Invalid JSON response: ${responseText}`);
-      }
+    if (error) {
+      console.error('Direct message thread creation failed:', error);
+      throw new Error(`Failed to create direct message thread: ${error.message}`);
     }
     console.log('✅ Created direct message thread:', thread.id);
     
@@ -408,44 +330,15 @@ export class ChatService {
     
     console.log('Sending thread data:', threadData);
 
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads`,
-      {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(threadData),
-      }
-    );
+    const { data: thread, error } = await supabase
+      .from('chat_threads')
+      .insert(threadData)
+      .select()
+      .single();
 
-    console.log('Group chat thread creation response:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Group chat thread creation failed:', errorText);
-      throw new Error(`Failed to create group chat thread: ${response.status} ${errorText}`);
-    }
-
-    const responseText = await response.text();
-    console.log('Group chat thread creation response text:', responseText);
-    
-    let thread;
-    if (responseText.trim() === '') {
-      // Empty response is normal for successful POST operations in Supabase
-      // We need to fetch the created thread separately
-      console.log('Empty response received, fetching created thread...');
-      thread = await this.fetchMostRecentThread(creatorId);
-    } else {
-      try {
-        thread = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Failed to parse response as JSON:', parseError);
-        console.error('Response text was:', responseText);
-        throw new Error(`Invalid JSON response: ${responseText}`);
-      }
+    if (error) {
+      console.error('Group chat thread creation failed:', error);
+      throw new Error(`Failed to create group chat thread: ${error.message}`);
     }
     console.log('Created group chat thread:', thread);
 
@@ -462,20 +355,17 @@ export class ChatService {
 
   // Helper method to fetch the most recently created thread for a user
   private static async fetchMostRecentThread(userId: string): Promise<any> {
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads?select=*&order=created_at.desc&limit=1`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: threads, error } = await supabase
+      .from('chat_threads')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch recent thread: ${response.status} ${errorText}`);
+    if (error) {
+      throw new Error(`Failed to fetch recent thread: ${error.message}`);
     }
 
-    const threads = await response.json();
-    if (threads.length === 0) {
+    if (!threads || threads.length === 0) {
       throw new Error('No recent thread found');
     }
 
@@ -484,20 +374,18 @@ export class ChatService {
 
   // Helper method to fetch the most recently sent message in a thread
   private static async fetchMostRecentMessage(threadId: string): Promise<any> {
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_messages?select=*&thread_id=eq.${threadId}&order=created_at.desc&limit=1`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: messages, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch recent message: ${response.status} ${errorText}`);
+    if (error) {
+      throw new Error(`Failed to fetch recent message: ${error.message}`);
     }
 
-    const messages = await response.json();
-    if (messages.length === 0) {
+    if (!messages || messages.length === 0) {
       throw new Error('No recent message found');
     }
 
@@ -515,45 +403,28 @@ export class ChatService {
       unread_count: 0,
     };
 
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_memberships`,
-      {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(membershipData),
-      }
-    );
+    const { error } = await supabase
+      .from('chat_memberships')
+      .insert(membershipData);
 
-    console.log('Add user to thread response:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Add user to thread failed:', errorText);
-      throw new Error(`Failed to add user to thread: ${response.status} ${errorText}`);
+    if (error) {
+      console.error('Add user to thread failed:', error);
+      throw new Error(`Failed to add user to thread: ${error.message}`);
     }
-
-    const responseText = await response.text();
-    console.log('Add user to thread response text:', responseText);
   }
 
   // Helper method to find existing direct message thread
   private static async findDirectMessageThread(userId1: string, userId2: string): Promise<ChatThread | null> {
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads?type=eq.dm&is_private=eq.true&select=*,chat_memberships!inner(user_id)`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: threads, error } = await supabase
+      .from('chat_threads')
+      .select('*, chat_memberships!inner(user_id)')
+      .eq('type', 'dm')
+      .eq('is_private', true);
 
-    if (!response.ok) {
+    if (error) {
+      console.error('Error finding direct message thread:', error);
       return null;
     }
-
-    const threads = await response.json();
     
     // Find thread with exactly these two users
     for (const thread of threads) {
@@ -568,16 +439,16 @@ export class ChatService {
 
   // Helper method to update thread's last_message_at
   private static async updateThreadLastMessage(threadId: string): Promise<void> {
-    await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads?id=eq.${threadId}`,
-      {
-        method: 'PATCH',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          last_message_at: new Date().toISOString(),
-        }),
-      }
-    );
+    const { error } = await supabase
+      .from('chat_threads')
+      .update({
+        last_message_at: new Date().toISOString(),
+      })
+      .eq('id', threadId);
+
+    if (error) {
+      console.error('Error updating thread last message:', error);
+    }
   }
 
   // Helper method to enrich thread with additional data
@@ -610,15 +481,13 @@ export class ChatService {
     // Add event data if it's an event thread
     if (thread.event_id) {
       try {
-        const eventResponse = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/events?id=eq.${thread.event_id}&select=id,title,start_time,end_time`,
-          { headers: this.getHeaders() }
-        );
-        if (eventResponse.ok) {
-          const events = await eventResponse.json();
-          if (events.length > 0) {
-            enriched.event = events[0];
-          }
+        const { data: events, error } = await supabase
+          .from('events')
+          .select('id,title,start_time,end_time')
+          .eq('id', thread.event_id);
+        
+        if (!error && events && events.length > 0) {
+          enriched.event = events[0];
         }
       } catch (error) {
         console.error('Error fetching event data:', error);
@@ -628,15 +497,14 @@ export class ChatService {
     // Add other user data for direct messages
     if (thread.type === 'dm') {
       try {
-        const membersResponse = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${thread.id}&user_id=neq.${userId}&select=user_id,users!inner(id,name,email,profile_image_url)`,
-          { headers: this.getHeaders() }
-        );
-        if (membersResponse.ok) {
-          const members = await membersResponse.json();
-          if (members.length > 0) {
-            enriched.otherUser = members[0].users;
-          }
+        const { data: members, error } = await supabase
+          .from('chat_memberships')
+          .select('user_id, users!inner(id,name,email,profile_image_url)')
+          .eq('thread_id', thread.id)
+          .neq('user_id', userId);
+        
+        if (!error && members && members.length > 0) {
+          enriched.otherUser = members[0].users;
         }
       } catch (error) {
         console.error('Error fetching other user data:', error);
@@ -669,15 +537,13 @@ export class ChatService {
 
     // Add user data
     try {
-      const userResponse = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/users?id=eq.${message.user_id}&select=id,name,email,profile_image_url`,
-        { headers: this.getHeaders() }
-      );
-      if (userResponse.ok) {
-        const users = await userResponse.json();
-        if (users.length > 0) {
-          enriched.user = users[0];
-        }
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id,name,email,profile_image_url')
+        .eq('id', message.user_id);
+      
+      if (!error && users && users.length > 0) {
+        enriched.user = users[0];
       }
     } catch (error) {
       console.error('Error fetching user data:', error);

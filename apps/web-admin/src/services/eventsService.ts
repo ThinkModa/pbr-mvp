@@ -1,5 +1,5 @@
 import { supabase, getServiceRoleClient } from '../lib/supabase';
-import { Database } from '../../../packages/database/src/types';
+import { Database } from '../types/database';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type EventInsert = Database['public']['Tables']['events']['Insert'];

@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 export interface Speaker {
   id: string;
   organizationId: string;
@@ -56,16 +57,7 @@ export interface ActivitySpeaker {
 }
 
 export class SpeakersService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Transform snake_case data from database to camelCase for frontend
   private static transformSpeakerData(data: any): Speaker {
@@ -96,28 +88,17 @@ export class SpeakersService {
   static async getEventSpeakers(eventId: string): Promise<EventSpeaker[]> {
     console.log('Getting event speakers:', { eventId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_speakers?event_id=eq.${eventId}&is_public=eq.true&order=display_order.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: eventSpeakers, error } = await supabase
+      .from('event_speakers')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('is_public', true)
+      .order('display_order', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting event speakers:', errorText);
-      throw new Error(`Failed to get event speakers: ${errorText}`);
+    if (error) {
+      console.error('Error getting event speakers:', error);
+      throw new Error(`Failed to get event speakers: ${error.message}`);
     }
-
-    const responseText = await response.text();
-    console.log('Get event speakers response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No event speakers found (empty response)');
-      return [];
-    }
-    
-    const eventSpeakers = JSON.parse(responseText);
     console.log('✅ Retrieved event speakers:', eventSpeakers.length);
 
     // Fetch speaker details for each event speaker
@@ -140,28 +121,17 @@ export class SpeakersService {
   static async getActivitySpeakers(activityId: string): Promise<ActivitySpeaker[]> {
     console.log('Getting activity speakers:', { activityId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/activity_speakers?activity_id=eq.${activityId}&is_public=eq.true&order=display_order.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: activitySpeakers, error } = await supabase
+      .from('activity_speakers')
+      .select('*')
+      .eq('activity_id', activityId)
+      .eq('is_public', true)
+      .order('display_order', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting activity speakers:', errorText);
-      throw new Error(`Failed to get activity speakers: ${errorText}`);
+    if (error) {
+      console.error('Error getting activity speakers:', error);
+      throw new Error(`Failed to get activity speakers: ${error.message}`);
     }
-
-    const responseText = await response.text();
-    console.log('Get activity speakers response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No activity speakers found (empty response)');
-      return [];
-    }
-    
-    const activitySpeakers = JSON.parse(responseText);
     console.log('✅ Retrieved activity speakers:', activitySpeakers.length);
 
     // Fetch speaker details for each activity speaker
@@ -184,28 +154,18 @@ export class SpeakersService {
   static async getSpeakerById(speakerId: string): Promise<Speaker> {
     console.log('Getting speaker by ID:', { speakerId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/speakers?id=eq.${speakerId}&is_public=eq.true`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: speakers, error } = await supabase
+      .from('speakers')
+      .select('*')
+      .eq('id', speakerId)
+      .eq('is_public', true);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting speaker:', errorText);
-      throw new Error(`Failed to get speaker: ${errorText}`);
+    if (error) {
+      console.error('Error getting speaker:', error);
+      throw new Error(`Failed to get speaker: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get speaker response text:', responseText);
-    
-    if (!responseText.trim()) {
-      throw new Error('Speaker not found');
-    }
-    
-    const speakers = JSON.parse(responseText);
-    if (speakers.length === 0) {
+    if (!speakers || speakers.length === 0) {
       throw new Error('Speaker not found');
     }
     
@@ -219,28 +179,16 @@ export class SpeakersService {
   static async getAllSpeakers(): Promise<Speaker[]> {
     console.log('Getting all speakers');
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/speakers?is_public=eq.true&order=first_name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: speakers, error } = await supabase
+      .from('speakers')
+      .select('*')
+      .eq('is_public', true)
+      .order('first_name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting all speakers:', errorText);
-      throw new Error(`Failed to get all speakers: ${errorText}`);
+    if (error) {
+      console.error('Error getting all speakers:', error);
+      throw new Error(`Failed to get all speakers: ${error.message}`);
     }
-
-    const responseText = await response.text();
-    console.log('Get all speakers response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No speakers found (empty response)');
-      return [];
-    }
-    
-    const speakers = JSON.parse(responseText);
     console.log('✅ Retrieved all speakers:', speakers.length);
     
     // Transform snake_case to camelCase

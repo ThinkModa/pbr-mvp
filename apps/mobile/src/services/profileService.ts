@@ -1,8 +1,10 @@
-// Real profile service that fetches from Supabase via REST API
-// This avoids Supabase client compatibility issues with Expo Go
+// Real profile service that uses centralized Supabase client
+// This ensures consistent database configuration across all services
 //
 // CRITICAL RULE: Test environment must ALWAYS use live database data, never mock data.
 // This ensures real-time sync between desktop admin and mobile app for true integration testing.
+
+import { supabase } from '../lib/supabase';
 
 export interface UserProfile {
   id: string;
@@ -67,8 +69,6 @@ export interface ProfileCompleteness {
 }
 
 export class ProfileService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
   /**
    * Get user profile with all related data
@@ -78,23 +78,21 @@ export class ProfileService {
       console.log('Getting user profile:', { userId });
 
       // Get user basic info
-      const userResponse = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/users?select=*&id=eq.${userId}`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-      if (!userResponse.ok) {
-        throw new Error(`Failed to fetch user: ${userResponse.status}`);
+      if (userError) {
+        throw new Error(`Failed to fetch user: ${userError.message}`);
       }
 
-      const users = await userResponse.json();
-      if (users.length === 0) {
+      if (!users) {
         throw new Error('User not found');
       }
 
-      const user = users[0];
+      const user = users;
 
       // Get professional categories
       const professionalCategories = await this.getUserProfessionalCategories(userId);
@@ -153,36 +151,19 @@ export class ProfileService {
       if (data.titlePosition !== undefined) dbData.title_position = data.titlePosition;
       if (data.avatarUrl !== undefined) dbData.avatar_url = data.avatarUrl;
 
-      console.log('Sending PATCH request with data:', dbData);
+      console.log('Updating user profile with data:', dbData);
       
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/users?id=eq.${userId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            ...this.getHeaders(),
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(dbData),
-        }
-      );
+      const { error } = await supabase
+        .from('users')
+        .update(dbData)
+        .eq('id', userId);
 
-      console.log('PATCH response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('PATCH error response:', errorText);
-        throw new Error(`Failed to update profile: ${response.status} ${errorText}`);
+      if (error) {
+        console.error('Update error:', error);
+        throw new Error(`Failed to update profile: ${error.message}`);
       }
 
-      // Handle 204 No Content response (successful update with no response body)
-      if (response.status === 204) {
-        console.log('✅ Updated user profile (204 No Content):', { userId });
-      } else {
-        const responseData = await response.json();
-        console.log('PATCH response data:', responseData);
-        console.log('✅ Updated user profile:', { userId });
-      }
+      console.log('✅ Updated user profile:', { userId });
     } catch (error) {
       console.error('Error updating user profile:', error);
       throw error;
@@ -194,18 +175,15 @@ export class ProfileService {
    */
   static async getProfessionalCategories(): Promise<ProfessionalCategory[]> {
     try {
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/professional_categories?select=*&is_active=eq.true&order=sort_order.asc`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: categories, error } = await supabase
+        .from('professional_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch professional categories: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch professional categories: ${error.message}`);
       }
-
-      const categories = await response.json();
       console.log('✅ Retrieved professional categories:', categories.length);
       return categories;
     } catch (error) {
@@ -219,18 +197,15 @@ export class ProfileService {
    */
   static async getCommunityInterests(): Promise<CommunityInterest[]> {
     try {
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/community_interests?select=*&is_active=eq.true&order=sort_order.asc`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: interests, error } = await supabase
+        .from('community_interests')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch community interests: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch community interests: ${error.message}`);
       }
-
-      const interests = await response.json();
       console.log('✅ Retrieved community interests:', interests.length);
       return interests;
     } catch (error) {
@@ -244,18 +219,15 @@ export class ProfileService {
    */
   static async getUserProfessionalCategories(userId: string): Promise<ProfessionalCategory[]> {
     try {
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/user_professional_categories?select=professional_categories(*)&user_id=eq.${userId}`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data, error } = await supabase
+        .from('user_professional_categories')
+        .select('professional_categories(*)')
+        .eq('user_id', userId);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user professional categories: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch user professional categories: ${error.message}`);
       }
 
-      const data = await response.json();
       const categories = data.map((item: any) => item.professional_categories).filter(Boolean);
       console.log('✅ Retrieved user professional categories:', categories.length);
       return categories;
@@ -270,18 +242,15 @@ export class ProfileService {
    */
   static async getUserCommunityInterests(userId: string): Promise<CommunityInterest[]> {
     try {
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/user_community_interests?select=community_interests(*)&user_id=eq.${userId}`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data, error } = await supabase
+        .from('user_community_interests')
+        .select('community_interests(*)')
+        .eq('user_id', userId);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user community interests: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch user community interests: ${error.message}`);
       }
 
-      const data = await response.json();
       const interests = data.map((item: any) => item.community_interests).filter(Boolean);
       console.log('✅ Retrieved user community interests:', interests.length);
       return interests;
@@ -296,18 +265,15 @@ export class ProfileService {
    */
   static async getUserEventHistory(userId: string): Promise<EventAttendance[]> {
     try {
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/user_event_attendance?select=*,events(title)&user_id=eq.${userId}&order=attended_at.desc`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data, error } = await supabase
+        .from('user_event_attendance')
+        .select('*, events(title)')
+        .eq('user_id', userId)
+        .order('attended_at', { ascending: false });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user event history: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch user event history: ${error.message}`);
       }
-
-      const data = await response.json();
       const history = data.map((item: any) => ({
         id: item.id,
         eventId: item.event_id,
@@ -332,13 +298,14 @@ export class ProfileService {
       console.log('Updating user professional categories:', { userId, categoryIds });
 
       // First, remove existing categories
-      await fetch(
-        `${this.SUPABASE_URL}/rest/v1/user_professional_categories?user_id=eq.${userId}`,
-        {
-          method: 'DELETE',
-          headers: this.getHeaders(),
-        }
-      );
+      const { error: deleteError } = await supabase
+        .from('user_professional_categories')
+        .delete()
+        .eq('user_id', userId);
+
+      if (deleteError) {
+        throw new Error(`Failed to delete existing professional categories: ${deleteError.message}`);
+      }
 
       // Then, add new categories
       if (categoryIds.length > 0) {
@@ -347,21 +314,12 @@ export class ProfileService {
           category_id: categoryId,
         }));
 
-        const response = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/user_professional_categories`,
-          {
-            method: 'POST',
-            headers: {
-              ...this.getHeaders(),
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(categoriesToInsert),
-          }
-        );
+        const { error: insertError } = await supabase
+          .from('user_professional_categories')
+          .insert(categoriesToInsert);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to update professional categories: ${response.status} ${errorText}`);
+        if (insertError) {
+          throw new Error(`Failed to update professional categories: ${insertError.message}`);
         }
       }
 
@@ -380,13 +338,14 @@ export class ProfileService {
       console.log('Updating user community interests:', { userId, interestIds });
 
       // First, remove existing interests
-      await fetch(
-        `${this.SUPABASE_URL}/rest/v1/user_community_interests?user_id=eq.${userId}`,
-        {
-          method: 'DELETE',
-          headers: this.getHeaders(),
-        }
-      );
+      const { error: deleteError } = await supabase
+        .from('user_community_interests')
+        .delete()
+        .eq('user_id', userId);
+
+      if (deleteError) {
+        throw new Error(`Failed to delete existing community interests: ${deleteError.message}`);
+      }
 
       // Then, add new interests
       if (interestIds.length > 0) {
@@ -395,21 +354,12 @@ export class ProfileService {
           interest_id: interestId,
         }));
 
-        const response = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/user_community_interests`,
-          {
-            method: 'POST',
-            headers: {
-              ...this.getHeaders(),
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(interestsToInsert),
-          }
-        );
+        const { error: insertError } = await supabase
+          .from('user_community_interests')
+          .insert(interestsToInsert);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to update community interests: ${response.status} ${errorText}`);
+        if (insertError) {
+          throw new Error(`Failed to update community interests: ${insertError.message}`);
         }
       }
 
@@ -508,14 +458,4 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Get API headers
-   */
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 }

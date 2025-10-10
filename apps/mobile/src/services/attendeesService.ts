@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 export interface EventAttendee {
   id: string;
   first_name: string;
@@ -21,8 +22,6 @@ export interface AttendeesFilter {
 
 class AttendeesService {
   // Use the network IP address that Expo Go can reach
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
   private getHeaders() {
     return {
@@ -39,20 +38,16 @@ class AttendeesService {
     try {
       console.log('Getting event attendees:', { eventId });
       
-      const response = await fetch(
-        `${AttendeesService.SUPABASE_URL}/rest/v1/event_rsvps?select=id,status,track_id,created_at,users!event_rsvps_user_id_fkey(id,first_name,last_name,email,phone_number,avatar_url,title_position,organization_affiliation),event_tracks(name)&event_id=eq.${eventId}&status=in.(attending,pending)`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
+      const { data, error } = await supabase
+        .from('event_rsvps')
+        .select('id,status,track_id,created_at,users!event_rsvps_user_id_fkey(id,first_name,last_name,email,phone_number,avatar_url,title_position,organization_affiliation),event_tracks(name)')
+        .eq('event_id', eventId)
+        .in('status', ['attending', 'pending']);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error fetching event attendees:', errorText);
-        throw new Error(`Failed to fetch attendees: ${errorText}`);
+      if (error) {
+        console.error('Error fetching event attendees:', error);
+        throw new Error(`Failed to fetch attendees: ${error.message}`);
       }
-
-      const data = await response.json();
       const attendees: EventAttendee[] = data.map((rsvp: any) => ({
         id: rsvp.users.id,
         first_name: rsvp.users.first_name,
@@ -83,24 +78,18 @@ class AttendeesService {
     try {
       console.log('Getting attendee count for event:', eventId);
       
-      const response = await fetch(
-        `${AttendeesService.SUPABASE_URL}/rest/v1/event_rsvps?select=*&event_id=eq.${eventId}&status=eq.attending`,
-        {
-          headers: {
-            ...this.getHeaders(),
-            'Prefer': 'count=exact'
-          },
-        }
-      );
+      const { count, error } = await supabase
+        .from('event_rsvps')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('status', 'attending');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error fetching attendee count:', errorText);
-        throw new Error(`Failed to fetch attendee count: ${errorText}`);
+      if (error) {
+        console.error('Error fetching attendee count:', error);
+        throw new Error(`Failed to fetch attendee count: ${error.message}`);
       }
 
-      const count = response.headers.get('content-range')?.split('/')[1];
-      const attendeeCount = count ? parseInt(count) : 0;
+      const attendeeCount = count || 0;
       
       console.log('✅ Retrieved attendee count:', attendeeCount);
       return attendeeCount;

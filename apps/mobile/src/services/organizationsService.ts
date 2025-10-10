@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 export interface Organization {
   id: string;
   name: string;
@@ -37,16 +38,7 @@ export interface EventOrganization {
 }
 
 export class OrganizationsService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Transform snake_case to camelCase
   private static transformOrganizationData(data: any): Organization {
@@ -77,28 +69,18 @@ export class OrganizationsService {
   static async getEventOrganizations(eventId: string): Promise<EventOrganization[]> {
     console.log('Getting event organizations:', { eventId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_organizations?event_id=eq.${eventId}&is_public=eq.true&order=display_order.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: eventOrganizations, error } = await supabase
+      .from('event_organizations')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('is_public', true)
+      .order('display_order', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting event organizations:', errorText);
-      throw new Error(`Failed to get event organizations: ${errorText}`);
+    if (error) {
+      console.error('Error getting event organizations:', error);
+      throw new Error(`Failed to get event organizations: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get event organizations response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No event organizations found (empty response)');
-      return [];
-    }
-    
-    const eventOrganizations = JSON.parse(responseText);
     console.log('✅ Retrieved event organizations:', eventOrganizations.length);
 
     // Fetch organization details for each event organization
@@ -121,28 +103,18 @@ export class OrganizationsService {
   static async getOrganizationById(organizationId: string): Promise<Organization> {
     console.log('Getting organization by ID:', { organizationId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/organizations?id=eq.${organizationId}&is_public=eq.true`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: organizations, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', organizationId)
+      .eq('is_public', true);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting organization:', errorText);
-      throw new Error(`Failed to get organization: ${errorText}`);
+    if (error) {
+      console.error('Error getting organization:', error);
+      throw new Error(`Failed to get organization: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get organization response text:', responseText);
-    
-    if (!responseText.trim()) {
-      throw new Error('Organization not found');
-    }
-    
-    const organizations = JSON.parse(responseText);
-    if (organizations.length === 0) {
+    if (!organizations || organizations.length === 0) {
       throw new Error('Organization not found');
     }
     
@@ -155,28 +127,17 @@ export class OrganizationsService {
   static async getAllOrganizations(): Promise<Organization[]> {
     console.log('Getting all organizations');
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/organizations?is_public=eq.true&order=name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: organizations, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('is_public', true)
+      .order('name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting all organizations:', errorText);
-      throw new Error(`Failed to get all organizations: ${errorText}`);
+    if (error) {
+      console.error('Error getting all organizations:', error);
+      throw new Error(`Failed to get all organizations: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get all organizations response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No organizations found (empty response)');
-      return [];
-    }
-    
-    const organizations = JSON.parse(responseText);
     const transformedOrganizations = organizations.map((org: any) => this.transformOrganizationData(org));
     console.log('✅ Retrieved all organizations:', transformedOrganizations.length);
     return transformedOrganizations;

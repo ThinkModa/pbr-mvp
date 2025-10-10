@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 export interface Business {
   id: string;
   organizationId: string;
@@ -77,43 +78,24 @@ export interface EventBusiness {
 }
 
 export class BusinessesService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Get all businesses for an event
   static async getEventBusinesses(eventId: string): Promise<EventBusiness[]> {
     console.log('Getting event businesses:', { eventId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_businesses?event_id=eq.${eventId}&is_public=eq.true&order=display_order.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: eventBusinesses, error } = await supabase
+      .from('event_businesses')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('is_public', true)
+      .order('display_order', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting event businesses:', errorText);
-      throw new Error(`Failed to get event businesses: ${errorText}`);
+    if (error) {
+      console.error('Error getting event businesses:', error);
+      throw new Error(`Failed to get event businesses: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get event businesses response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No event businesses found (empty response)');
-      return [];
-    }
-    
-    const eventBusinesses = JSON.parse(responseText);
     console.log('✅ Retrieved event businesses:', eventBusinesses.length);
 
     // Fetch business details and contacts for each event business
@@ -137,28 +119,18 @@ export class BusinessesService {
   static async getBusinessById(businessId: string): Promise<Business> {
     console.log('Getting business by ID:', { businessId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/businesses?id=eq.${businessId}&is_public=eq.true`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: businesses, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('id', businessId)
+      .eq('is_public', true);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting business:', errorText);
-      throw new Error(`Failed to get business: ${errorText}`);
+    if (error) {
+      console.error('Error getting business:', error);
+      throw new Error(`Failed to get business: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get business response text:', responseText);
-    
-    if (!responseText.trim()) {
-      throw new Error('Business not found');
-    }
-    
-    const businesses = JSON.parse(responseText);
-    if (businesses.length === 0) {
+    if (!businesses || businesses.length === 0) {
       throw new Error('Business not found');
     }
     
@@ -170,59 +142,39 @@ export class BusinessesService {
   static async getBusinessContacts(businessId: string): Promise<BusinessContact[]> {
     console.log('Getting business contacts:', { businessId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/business_contacts?business_id=eq.${businessId}&is_public=eq.true&order=is_primary.desc,first_name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: contacts, error } = await supabase
+      .from('business_contacts')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('is_public', true)
+      .order('is_primary', { ascending: false })
+      .order('first_name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting business contacts:', errorText);
-      throw new Error(`Failed to get business contacts: ${errorText}`);
+    if (error) {
+      console.error('Error getting business contacts:', error);
+      throw new Error(`Failed to get business contacts: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get business contacts response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No business contacts found (empty response)');
-      return [];
-    }
-    
-    const contacts = JSON.parse(responseText);
     console.log('✅ Retrieved business contacts:', contacts.length);
-    return contacts;
+    return contacts || [];
   }
 
   // Get all public businesses (for admin selection)
   static async getAllBusinesses(): Promise<Business[]> {
     console.log('Getting all businesses');
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/businesses?is_public=eq.true&order=name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: businesses, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('is_public', true)
+      .order('name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting all businesses:', errorText);
-      throw new Error(`Failed to get all businesses: ${errorText}`);
+    if (error) {
+      console.error('Error getting all businesses:', error);
+      throw new Error(`Failed to get all businesses: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get all businesses response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No businesses found (empty response)');
-      return [];
-    }
-    
-    const businesses = JSON.parse(responseText);
     console.log('✅ Retrieved all businesses:', businesses.length);
-    return businesses;
+    return businesses || [];
   }
 }

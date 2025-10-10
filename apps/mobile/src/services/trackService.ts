@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 // Track service for managing event tracks and track assignments
 // Uses REST API calls to avoid Supabase client compatibility issues with Expo Go
 
@@ -40,16 +41,7 @@ export interface UpdateTrackData {
 }
 
 export class TrackService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   /**
    * Get all tracks for an event
@@ -58,19 +50,16 @@ export class TrackService {
     try {
       console.log('Getting event tracks:', { eventId });
       
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/event_tracks?event_id=eq.${eventId}&is_active=eq.true&order=display_order.asc`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: tracks, error } = await supabase
+        .from('event_tracks')
+        .select('*')
+        .eq('event_id', eventId)
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tracks: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch tracks: ${error.message}`);
       }
-
-      const tracks = await response.json();
       console.log('✅ Retrieved event tracks:', tracks.length);
       return tracks;
     } catch (error) {
@@ -86,20 +75,16 @@ export class TrackService {
     try {
       console.log('Getting track:', { trackId });
       
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/event_tracks?id=eq.${trackId}`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: tracks, error } = await supabase
+        .from('event_tracks')
+        .select('*')
+        .eq('id', trackId);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch track: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch track: ${error.message}`);
       }
 
-      const tracks = await response.json();
-      if (tracks.length === 0) {
+      if (!tracks || tracks.length === 0) {
         throw new Error('Track not found');
       }
 
@@ -119,19 +104,16 @@ export class TrackService {
       console.log('Getting track capacity:', { trackId });
       
       // Get current RSVPs for this track
-      const rsvpResponse = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/event_rsvps?track_id=eq.${trackId}&status=eq.attending`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: rsvps, error: rsvpError } = await supabase
+        .from('event_rsvps')
+        .select('*')
+        .eq('track_id', trackId)
+        .eq('status', 'attending');
 
-      if (!rsvpResponse.ok) {
-        throw new Error(`Failed to fetch track RSVPs: ${rsvpResponse.status}`);
+      if (rsvpError) {
+        throw new Error(`Failed to fetch track RSVPs: ${rsvpError.message}`);
       }
 
-      const rsvps = await rsvpResponse.json();
       const current_rsvps = rsvps.length;
 
       // Get track max capacity
@@ -155,19 +137,15 @@ export class TrackService {
     try {
       console.log('Getting track activities:', { trackId });
       
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/track_activities?track_id=eq.${trackId}&select=*,activities(*)`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: trackActivities, error } = await supabase
+        .from('track_activities')
+        .select('*, activities(*)')
+        .eq('track_id', trackId);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch track activities: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch track activities: ${error.message}`);
       }
 
-      const trackActivities = await response.json();
       const activities = trackActivities.map((ta: any) => ta.activities).filter(Boolean);
       console.log('✅ Retrieved track activities:', activities.length);
       return activities;
@@ -184,20 +162,16 @@ export class TrackService {
     try {
       console.log('Checking if event requires tracks:', { eventId });
       
-      const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/events?id=eq.${eventId}&select=has_tracks`,
-        {
-          method: 'GET',
-          headers: this.getHeaders(),
-        }
-      );
+      const { data: events, error } = await supabase
+        .from('events')
+        .select('has_tracks')
+        .eq('id', eventId);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch event track requirement: ${response.status}`);
+      if (error) {
+        throw new Error(`Failed to fetch event track requirement: ${error.message}`);
       }
 
-      const events = await response.json();
-      if (events.length === 0) {
+      if (!events || events.length === 0) {
         throw new Error('Event not found');
       }
 

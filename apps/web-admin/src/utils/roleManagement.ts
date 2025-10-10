@@ -1,5 +1,5 @@
 import { getServiceRoleClient, supabase } from '../lib/supabase';
-import { Database } from '../../../../packages/database/src/types';
+import { Database } from '../types/database';
 
 const serviceRoleSupabase = getServiceRoleClient();
 

@@ -2,7 +2,7 @@
   "expo": {
     "name": "PBR MVP",
     "slug": "pbr-mvp",
-    "owner": "helprs_dev",
+    "owner": "thinkmodalabs",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.helprs.pbr-mvp",
+        "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

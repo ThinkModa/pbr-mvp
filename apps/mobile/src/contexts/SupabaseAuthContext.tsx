@@ -2,14 +2,14 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { createClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-url-polyfill/auto';
-import { Database } from '../../../packages/database/src/types';
+// import { Database } from '../../../packages/database/src/types';
 
-// Supabase configuration for local development
-const supabaseUrl = 'http://127.0.0.1:54321';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+// Supabase configuration for cloud database
+const supabaseUrl = 'https://zqjziejllixifpwzbdnf.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxanppZWpsbGl4aWZwd3piZG5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNzgxMzIsImV4cCI6MjA3NTY1NDEzMn0.xCpv4401K5-WzojCMLy4HdY5xQJBP9xbar1sJTFkVgc';
 
 // Create Supabase client for React Native
-const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -78,9 +78,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.email);
         
-        if (session?.user) {
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('User signed in, loading profile...');
+          setLoading(true);
           await loadUserProfile(session.user);
-        } else {
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out');
+          setUser(null);
+          setLoading(false);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          console.log('Token refreshed, ensuring profile is loaded...');
+          if (!user) {
+            await loadUserProfile(session.user);
+          }
+        } else if (session?.user && !user) {
+          console.log('Session exists but no user loaded, loading profile...');
+          setLoading(true);
+          await loadUserProfile(session.user);
+        } else if (!session?.user) {
           setUser(null);
           setLoading(false);
         }
@@ -93,6 +108,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Load user profile from public.users table
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
+      console.log('Loading user profile for:', supabaseUser.email);
+      
       const { data: userProfile, error } = await supabase
         .from('users')
         .select('*')
@@ -102,11 +119,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error) {
         console.error('Error loading user profile:', error);
         // If profile doesn't exist, create it
+        console.log('Creating user profile...');
         await createUserProfile(supabaseUser);
         return;
       }
 
       if (userProfile) {
+        console.log('User profile loaded:', userProfile.email, userProfile.role);
         const user: User = {
           id: userProfile.id,
           email: userProfile.email,
@@ -120,10 +139,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           updated_at: userProfile.updated_at,
         };
         setUser(user);
+        setLoading(false);
+      } else {
+        console.log('No user profile found, creating one...');
+        await createUserProfile(supabaseUser);
       }
     } catch (error) {
       console.error('Error in loadUserProfile:', error);
-    } finally {
       setLoading(false);
     }
   };
@@ -131,25 +153,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Create user profile if it doesn't exist
   const createUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
+      console.log('Creating user profile for:', supabaseUser.email);
+      
       const { error } = await supabase
         .from('users')
         .insert({
           id: supabaseUser.id,
           email: supabaseUser.email!,
           name: supabaseUser.user_metadata?.name || supabaseUser.email!.split('@')[0],
-          role: 'general',
+          role: supabaseUser.user_metadata?.role || 'general',
           is_active: true,
           created_at: new Date().toISOString(),
         });
 
       if (error) {
         console.error('Error creating user profile:', error);
+        setLoading(false);
       } else {
+        console.log('User profile created successfully');
         // Reload the profile
         await loadUserProfile(supabaseUser);
       }
     } catch (error) {
       console.error('Error in createUserProfile:', error);
+      setLoading(false);
     }
   };
 
@@ -167,6 +194,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         options: {
           data: {
             name: `${userData.firstName} ${userData.lastName}`,
+            firstName: userData.firstName,  // Add explicit field
+            lastName: userData.lastName,     // Add explicit field
             phone: userData.phone,
             role: userData.role,
           }
@@ -190,20 +219,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Sign in
   const signIn = async (email: string, password: string) => {
     try {
+      console.log('🔐 Attempting sign in for:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        console.error('Signin error:', error);
+        console.error('❌ Signin error:', error);
         return { error };
       }
+
+      console.log('✅ Sign in successful:', data.user?.email);
+      console.log('📊 Session data:', data.session ? 'Session exists' : 'No session');
 
       // The auth state change listener will handle loading the user profile
       return { error: null };
     } catch (error) {
-      console.error('Signin exception:', error);
+      console.error('💥 Signin exception:', error);
       return { error };
     }
   };

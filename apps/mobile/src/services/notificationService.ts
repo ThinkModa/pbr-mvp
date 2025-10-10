@@ -64,7 +64,7 @@ export class NotificationService {
       }
 
       const token = await Notifications.getExpoPushTokenAsync({
-        projectId: 'your-expo-project-id', // Replace with actual project ID
+        projectId: 'b7bbb674-9236-46b7-b271-a12902508678',
       });
 
       this.expoPushToken = token.data;
