@@ -22,6 +22,13 @@
         "APP_ENV": "staging"
       }
     },
+    "testflight": {
+      "distribution": "store",
+      "channel": "testflight",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
     "production": {
       "distribution": "store",
       "channel": "production",
@@ -31,11 +38,18 @@
     }
   },
   "submit": {
+    "testflight": {
+      "ios": {
+        "appleId": "rahwalton9@gmail.com",
+        "ascAppId": "6753880318",
+        "appleTeamId": "6W36XJQB7N"
+      }
+    },
     "production": {
       "ios": {
-        "appleId": "placeholder@example.com",
-        "ascAppId": "placeholder",
-        "appleTeamId": "placeholder"
+        "appleId": "rahwalton9@gmail.com",
+        "ascAppId": "6753880318",
+        "appleTeamId": "6W36XJQB7N"
       },
       "android": {
         "serviceAccountKeyPath": "./secrets/playstore-service-account.json"

@@ -20,3 +20,4 @@ VALUES (
   5242880, -- 5MB limit
   ARRAY['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 ) ON CONFLICT (id) DO NOTHING;
+

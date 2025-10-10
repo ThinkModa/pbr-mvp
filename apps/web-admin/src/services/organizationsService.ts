@@ -42,10 +42,9 @@ export interface UpdateOrganizationData extends Partial<CreateOrganizationData> 
   id: string;
 }
 
-export class OrganizationsService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+import { supabase, getServiceRoleClient } from '../lib/supabase';
 
+export class OrganizationsService {
   private static generateSlug(name: string): string {
     return name
       .toLowerCase()
@@ -55,46 +54,25 @@ export class OrganizationsService {
       .trim();
   }
 
-  private static getHeaders(includeRepresentation = false) {
-    const headers = {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-    
-    if (includeRepresentation) {
-      headers['Prefer'] = 'return=representation';
-    }
-    
-    return headers;
-  }
-
   // Get all organizations
   static async getAllOrganizations(): Promise<Organization[]> {
     console.log('Getting all organizations');
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/organizations?order=name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: organizationsData, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .order('name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting all organizations:', errorText);
-      throw new Error(`Failed to get organizations: ${errorText}`);
+    if (error) {
+      console.error('Error getting all organizations:', error);
+      throw new Error(`Failed to get organizations: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get all organizations response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No organizations found (empty response)');
+    if (!organizationsData || organizationsData.length === 0) {
+      console.log('✅ No organizations found');
       return [];
     }
     
-    const organizationsData = JSON.parse(responseText);
     console.log('✅ Retrieved all organizations:', organizationsData.length);
     
     // Transform snake_case to camelCase
@@ -127,32 +105,22 @@ export class OrganizationsService {
   static async getOrganizationById(organizationId: string): Promise<Organization> {
     console.log('Getting organization by ID:', { organizationId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/organizations?id=eq.${organizationId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: organizationsData, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', organizationId)
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting organization:', errorText);
-      throw new Error(`Failed to get organization: ${errorText}`);
+    if (error) {
+      console.error('Error getting organization:', error);
+      throw new Error(`Failed to get organization: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get organization response text:', responseText);
-    
-    if (!responseText.trim()) {
+    if (!organizationsData) {
       throw new Error('Organization not found');
     }
     
-    const organizationsData = JSON.parse(responseText);
-    if (organizationsData.length === 0) {
-      throw new Error('Organization not found');
-    }
-    
-    const orgData = organizationsData[0];
+    const orgData = organizationsData;
     
     // Transform snake_case to camelCase
     const organization = {
@@ -185,10 +153,9 @@ export class OrganizationsService {
   static async createOrganization(data: CreateOrganizationData): Promise<Organization> {
     console.log('Creating organization:', data);
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/organizations`, {
-      method: 'POST',
-      headers: this.getHeaders(true), // Include representation header
-      body: JSON.stringify({
+    const { data: orgData, error } = await supabase
+      .from('organizations')
+      .insert({
         name: data.name,
         slug: data.slug || this.generateSlug(data.name),
         description: data.description,
@@ -205,28 +172,18 @@ export class OrganizationsService {
         is_sponsor: data.isSponsor,
         tags: data.tags,
         metadata: {},
-      }),
-    });
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error creating organization:', errorText);
-      throw new Error(`Failed to create organization: ${errorText}`);
+    if (error) {
+      console.error('Error creating organization:', error);
+      throw new Error(`Failed to create organization: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Create organization response text:', responseText);
-    
-    if (!responseText.trim()) {
-      throw new Error('Failed to create organization - no response');
-    }
-    
-    const organizationsData = JSON.parse(responseText);
-    if (organizationsData.length === 0) {
+    if (!orgData) {
       throw new Error('Failed to create organization - no data returned');
     }
-    
-    const orgData = organizationsData[0];
     
     // Transform snake_case to camelCase
     const organization = {
@@ -259,10 +216,9 @@ export class OrganizationsService {
   static async updateOrganization(data: UpdateOrganizationData): Promise<Organization> {
     console.log('Updating organization:', data);
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/organizations?id=eq.${data.id}`, {
-      method: 'PATCH',
-      headers: this.getHeaders(true), // Include representation header
-      body: JSON.stringify({
+    const { data: orgData, error } = await supabase
+      .from('organizations')
+      .update({
         name: data.name,
         slug: data.slug || (data.name ? this.generateSlug(data.name) : undefined),
         description: data.description,
@@ -279,31 +235,21 @@ export class OrganizationsService {
         is_sponsor: data.isSponsor,
         tags: data.tags,
         updated_at: new Date().toISOString(),
-      }),
-    });
+      })
+      .eq('id', data.id)
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error updating organization:', errorText);
-      throw new Error(`Failed to update organization: ${errorText}`);
+    if (error) {
+      console.error('Error updating organization:', error);
+      throw new Error(`Failed to update organization: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Update organization response text:', responseText);
-    
-    if (!responseText.trim()) {
+    if (!orgData) {
       // If no response, fetch the updated organization data
       console.log('✅ Organization updated successfully, fetching updated data...');
       return await this.getOrganizationById(data.id);
     }
-    
-    // If we have response data, parse it
-    const organizationsData = JSON.parse(responseText);
-    if (organizationsData.length === 0) {
-      throw new Error('Failed to update organization - no data returned');
-    }
-    
-    const orgData = organizationsData[0];
     
     // Transform snake_case to camelCase
     const organization = {
@@ -336,15 +282,14 @@ export class OrganizationsService {
   static async deleteOrganization(organizationId: string): Promise<void> {
     console.log('Deleting organization:', { organizationId });
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/organizations?id=eq.${organizationId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
+    const { error } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', organizationId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error deleting organization:', errorText);
-      throw new Error(`Failed to delete organization: ${errorText}`);
+    if (error) {
+      console.error('Error deleting organization:', error);
+      throw new Error(`Failed to delete organization: ${error.message}`);
     }
 
     console.log('✅ Organization deleted');
@@ -354,28 +299,21 @@ export class OrganizationsService {
   static async getOrganizationEvents(organizationId: string): Promise<string[]> {
     console.log('Getting organization events:', { organizationId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_organizations?organization_id=eq.${organizationId}&select=event_id`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: eventsData, error } = await supabase
+      .from('event_organizations')
+      .select('event_id')
+      .eq('organization_id', organizationId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting organization events:', errorText);
-      throw new Error(`Failed to get organization events: ${errorText}`);
+    if (error) {
+      console.error('Error getting organization events:', error);
+      throw new Error(`Failed to get organization events: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get organization events response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No events found for organization (empty response)');
+    if (!eventsData || eventsData.length === 0) {
+      console.log('✅ No events found for organization');
       return [];
     }
     
-    const eventsData = JSON.parse(responseText);
     const eventIds = eventsData.map((item: any) => item.event_id);
     
     console.log('✅ Retrieved organization events:', eventIds);

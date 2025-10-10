@@ -50,50 +50,29 @@ export interface UpdateSpeakerData extends Partial<CreateSpeakerData> {
   id: string;
 }
 
-export class SpeakersService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+import { supabase, getServiceRoleClient } from '../lib/supabase';
 
-  private static getHeaders(includeRepresentation = false) {
-    const headers = {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-    
-    if (includeRepresentation) {
-      headers['Prefer'] = 'return=representation';
-    }
-    
-    return headers;
-  }
+export class SpeakersService {
 
   // Get all speakers
   static async getAllSpeakers(): Promise<Speaker[]> {
     console.log('Getting all speakers');
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/speakers?order=first_name.asc`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: speakersData, error } = await supabase
+      .from('speakers')
+      .select('*')
+      .order('first_name', { ascending: true });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting all speakers:', errorText);
-      throw new Error(`Failed to get speakers: ${errorText}`);
+    if (error) {
+      console.error('Error getting all speakers:', error);
+      throw new Error(`Failed to get speakers: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get all speakers response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No speakers found (empty response)');
+    if (!speakersData || speakersData.length === 0) {
+      console.log('✅ No speakers found');
       return [];
     }
     
-    const speakersData = JSON.parse(responseText);
     console.log('✅ Retrieved all speakers:', speakersData.length);
     
     // Transform snake_case to camelCase
@@ -126,32 +105,20 @@ export class SpeakersService {
   static async getSpeakerById(speakerId: string): Promise<Speaker> {
     console.log('Getting speaker by ID:', { speakerId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/speakers?id=eq.${speakerId}`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: speakerData, error } = await supabase
+      .from('speakers')
+      .select('*')
+      .eq('id', speakerId)
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting speaker:', errorText);
-      throw new Error(`Failed to get speaker: ${errorText}`);
+    if (error) {
+      console.error('Error getting speaker:', error);
+      throw new Error(`Failed to get speaker: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get speaker response text:', responseText);
-    
-    if (!responseText.trim()) {
+    if (!speakerData) {
       throw new Error('Speaker not found');
     }
-    
-    const speakersData = JSON.parse(responseText);
-    if (speakersData.length === 0) {
-      throw new Error('Speaker not found');
-    }
-    
-    const speakerData = speakersData[0];
     
     // Transform snake_case to camelCase
     const speaker = {
@@ -184,10 +151,9 @@ export class SpeakersService {
   static async createSpeaker(data: CreateSpeakerData): Promise<Speaker> {
     console.log('Creating speaker:', data);
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/speakers`, {
-      method: 'POST',
-      headers: this.getHeaders(true), // Include representation header
-      body: JSON.stringify({
+    const { data: speakerData, error } = await supabase
+      .from('speakers')
+      .insert({
         organization_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // Default org for now
         first_name: data.firstName,
         last_name: data.lastName,
@@ -203,28 +169,18 @@ export class SpeakersService {
         allow_contact: data.allowContact,
         tags: data.tags,
         metadata: {},
-      }),
-    });
+      })
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error creating speaker:', errorText);
-      throw new Error(`Failed to create speaker: ${errorText}`);
+    if (error) {
+      console.error('Error creating speaker:', error);
+      throw new Error(`Failed to create speaker: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Create speaker response text:', responseText);
-    
-    if (!responseText.trim()) {
-      throw new Error('Failed to create speaker - no response');
-    }
-    
-    const speakersData = JSON.parse(responseText);
-    if (speakersData.length === 0) {
+    if (!speakerData) {
       throw new Error('Failed to create speaker - no data returned');
     }
-    
-    const speakerData = speakersData[0];
     
     // Transform snake_case to camelCase
     const speaker = {
@@ -257,10 +213,9 @@ export class SpeakersService {
   static async updateSpeaker(data: UpdateSpeakerData): Promise<Speaker> {
     console.log('Updating speaker:', data);
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/speakers?id=eq.${data.id}`, {
-      method: 'PATCH',
-      headers: this.getHeaders(true), // Include representation header
-      body: JSON.stringify({
+    const { data: speakerData, error } = await supabase
+      .from('speakers')
+      .update({
         first_name: data.firstName,
         last_name: data.lastName,
         email: data.email,
@@ -275,31 +230,21 @@ export class SpeakersService {
         allow_contact: data.allowContact,
         tags: data.tags,
         updated_at: new Date().toISOString(),
-      }),
-    });
+      })
+      .eq('id', data.id)
+      .select()
+      .single();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error updating speaker:', errorText);
-      throw new Error(`Failed to update speaker: ${errorText}`);
+    if (error) {
+      console.error('Error updating speaker:', error);
+      throw new Error(`Failed to update speaker: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Update speaker response text:', responseText);
-    
-    if (!responseText.trim()) {
+    if (!speakerData) {
       // If no response, fetch the updated speaker data
       console.log('✅ Speaker updated successfully, fetching updated data...');
       return await this.getSpeakerById(data.id);
     }
-    
-    // If we have response data, parse it
-    const speakersData = JSON.parse(responseText);
-    if (speakersData.length === 0) {
-      throw new Error('Failed to update speaker - no data returned');
-    }
-    
-    const speakerData = speakersData[0];
     
     // Transform snake_case to camelCase
     const speaker = {
@@ -332,15 +277,14 @@ export class SpeakersService {
   static async deleteSpeaker(speakerId: string): Promise<void> {
     console.log('Deleting speaker:', { speakerId });
     
-    const response = await fetch(`${this.SUPABASE_URL}/rest/v1/speakers?id=eq.${speakerId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
+    const { error } = await supabase
+      .from('speakers')
+      .delete()
+      .eq('id', speakerId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error deleting speaker:', errorText);
-      throw new Error(`Failed to delete speaker: ${errorText}`);
+    if (error) {
+      console.error('Error deleting speaker:', error);
+      throw new Error(`Failed to delete speaker: ${error.message}`);
     }
 
     console.log('✅ Speaker deleted');
@@ -350,28 +294,21 @@ export class SpeakersService {
   static async getSpeakerEvents(speakerId: string): Promise<string[]> {
     console.log('Getting speaker events:', { speakerId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/event_speakers?speaker_id=eq.${speakerId}&select=event_id`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: eventData, error } = await supabase
+      .from('event_speakers')
+      .select('event_id')
+      .eq('speaker_id', speakerId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting speaker events:', errorText);
-      throw new Error(`Failed to get speaker events: ${errorText}`);
+    if (error) {
+      console.error('Error getting speaker events:', error);
+      throw new Error(`Failed to get speaker events: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get speaker events response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No events found for speaker (empty response)');
+    if (!eventData || eventData.length === 0) {
+      console.log('✅ No events found for speaker');
       return [];
     }
     
-    const eventData = JSON.parse(responseText);
     const eventIds = eventData.map((item: any) => item.event_id);
     
     console.log('✅ Retrieved speaker events:', eventIds);
@@ -382,28 +319,21 @@ export class SpeakersService {
   static async getSpeakerActivities(speakerId: string): Promise<string[]> {
     console.log('Getting speaker activities:', { speakerId });
     
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/activity_speakers?speaker_id=eq.${speakerId}&select=activity_id`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: activityData, error } = await supabase
+      .from('activity_speakers')
+      .select('activity_id')
+      .eq('speaker_id', speakerId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error getting speaker activities:', errorText);
-      throw new Error(`Failed to get speaker activities: ${errorText}`);
+    if (error) {
+      console.error('Error getting speaker activities:', error);
+      throw new Error(`Failed to get speaker activities: ${error.message}`);
     }
 
-    const responseText = await response.text();
-    console.log('Get speaker activities response text:', responseText);
-    
-    if (!responseText.trim()) {
-      console.log('✅ No activities found for speaker (empty response)');
+    if (!activityData || activityData.length === 0) {
+      console.log('✅ No activities found for speaker');
       return [];
     }
     
-    const activityData = JSON.parse(responseText);
     const activityIds = activityData.map((item: any) => item.activity_id);
     
     console.log('✅ Retrieved speaker activities:', activityIds);
