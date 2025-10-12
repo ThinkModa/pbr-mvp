@@ -22,11 +22,21 @@
         "APP_ENV": "staging"
       }
     },
-    "testflight": {
+    "beta": {
       "distribution": "store",
-      "channel": "testflight",
+      "channel": "beta",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "beta",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://beta-project-ref.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "beta-anon-key-placeholder"
+      },
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "bundleIdentifier": "com.thinkmodalabs.pbr-mvp.beta"
+      },
+      "android": {
+        "buildType": "aab",
+        "package": "com.thinkmodalabs.pbr_mvp.beta"
       }
     },
     "production": {
@@ -38,11 +48,15 @@
     }
   },
   "submit": {
-    "testflight": {
+    "beta": {
       "ios": {
         "appleId": "rahwalton9@gmail.com",
         "ascAppId": "6753880318",
         "appleTeamId": "6W36XJQB7N"
+      },
+      "android": {
+        "track": "internal",
+        "serviceAccountKeyPath": "./secrets/playstore-service-account.json"
       }
     },
     "production": {
