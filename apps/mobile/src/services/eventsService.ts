@@ -13,6 +13,9 @@ export interface EventWithActivities {
   start_time: string;
   end_time: string;
   location: { name: string } | null;
+  location_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   max_capacity: number | null;
   current_rsvps: number;
   is_free: boolean;

@@ -14,7 +14,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-// import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { CalendarService, CalendarEvent } from '../services/calendarService';
@@ -55,6 +55,18 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const [refreshing, setRefreshing] = useState(false);
 
   console.log('EventModal render:', { visible, event: event?.title });
+
+  // Open in Maps function
+  const openInMaps = (latitude: number, longitude: number) => {
+    const url = Platform.OS === 'ios' 
+      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
+      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
+    
+    Linking.openURL(url).catch(err => {
+      console.error('Error opening maps:', err);
+      Alert.alert('Error', 'Unable to open maps. Please try again.');
+    });
+  };
 
   // Load user's RSVP status, calendar status, speakers, and businesses when modal opens
   useEffect(() => {
@@ -414,14 +426,50 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                   <Text style={styles.locationText}>
                     {event.location?.name || 'Location TBD'}
                   </Text>
+                  {event.location_address && (
+                    <Text style={styles.locationAddress}>
+                      {event.location_address}
+                    </Text>
+                  )}
                 </View>
                 
-                {/* Map View - Temporarily disabled until coordinates are available */}
-                {false && event?.location && (
+                {/* Map View - Enabled when coordinates are available */}
+                {event.latitude && event.longitude ? (
                   <View style={styles.mapContainer}>
-                    <Text style={styles.mapPlaceholder}>Map view coming soon</Text>
+                    <MapView
+                      style={styles.map}
+                      initialRegion={{
+                        latitude: event.latitude,
+                        longitude: event.longitude,
+                        latitudeDelta: 0.01,
+                        longitudeDelta: 0.01,
+                      }}
+                      showsUserLocation={false}
+                      showsMyLocationButton={false}
+                    >
+                      <Marker
+                        coordinate={{
+                          latitude: event.latitude,
+                          longitude: event.longitude,
+                        }}
+                        title={event.location?.name || 'Event Location'}
+                        description={event.location_address || 'Event Address'}
+                      />
+                    </MapView>
+                    <TouchableOpacity 
+                      style={styles.openMapsButton}
+                      onPress={() => openInMaps(event.latitude, event.longitude)}
+                    >
+                      <Text style={styles.openMapsButtonText}>Open in Maps</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
+                ) : event.location?.name ? (
+                  <View style={styles.mapContainer}>
+                    <Text style={styles.mapPlaceholder}>
+                      Map view coming soon - coordinates needed
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               {/* Date and Time */}
@@ -923,6 +971,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  locationAddress: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   mapContainer: {
     marginTop: 12,
