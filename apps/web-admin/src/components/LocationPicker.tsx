@@ -33,12 +33,27 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   placeholder = "Search for a location...",
   required = false
 }) => {
-  const [inputValue, setInputValue] = useState(value);
+  // Handle both string and object values properly
+  const getInitialValue = () => {
+    if (typeof value === 'string') {
+      return value;
+    } else if (value && typeof value === 'object' && value.name) {
+      return value.name;
+    }
+    return '';
+  };
+
+  const [inputValue, setInputValue] = useState(getInitialValue());
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
+
+  // Update input value when value prop changes (for editing existing events)
+  useEffect(() => {
+    setInputValue(getInitialValue());
+  }, [value]);
 
   // Initialize Google Places API
   useEffect(() => {
