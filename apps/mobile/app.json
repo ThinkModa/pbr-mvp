@@ -22,7 +22,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
-        "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY"
+        "googleMapsApiKey": "AIzaSyByTmNhgXa_FbmgVx9VRxNqzKtof1Z32h8"
       }
     },
     "android": {
@@ -33,7 +33,7 @@
       "package": "com.helprs.pbr_mvp",
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+          "apiKey": "AIzaSyByTmNhgXa_FbmgVx9VRxNqzKtof1Z32h8"
         }
       }
     },
