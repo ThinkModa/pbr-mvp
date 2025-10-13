@@ -96,8 +96,8 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
         notes: event.description,
       };
@@ -116,8 +116,8 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
         notes: event.description,
       };
@@ -145,8 +145,8 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
         notes: event.description,
       };
@@ -1227,7 +1227,7 @@ const styles = StyleSheet.create({
   },
   // Speakers Section Styles
   speakersSection: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
   speakersScrollView: {
     marginTop: 12,
