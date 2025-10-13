@@ -434,42 +434,48 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                 </View>
                 
                 {/* Map View - Enabled when coordinates are available */}
-                {event.latitude && event.longitude ? (
-                  <View style={styles.mapContainer}>
-                    <MapView
-                      style={styles.map}
-                      initialRegion={{
-                        latitude: event.latitude,
-                        longitude: event.longitude,
-                        latitudeDelta: 0.01,
-                        longitudeDelta: 0.01,
-                      }}
-                      showsUserLocation={false}
-                      showsMyLocationButton={false}
-                    >
-                      <Marker
-                        coordinate={{
-                          latitude: event.latitude,
-                          longitude: event.longitude,
+                {(() => {
+                  // Get coordinates from either the separate fields or the location object
+                  const lat = event.latitude || event.location?.coordinates?.lat;
+                  const lng = event.longitude || event.location?.coordinates?.lng;
+                  
+                  return lat && lng ? (
+                    <View style={styles.mapContainer}>
+                      <MapView
+                        style={styles.map}
+                        initialRegion={{
+                          latitude: lat,
+                          longitude: lng,
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
                         }}
-                        title={event.location?.name || 'Event Location'}
-                        description={event.location_address || 'Event Address'}
-                      />
-                    </MapView>
-                    <TouchableOpacity 
-                      style={styles.openMapsButton}
-                      onPress={() => openInMaps(event.latitude, event.longitude)}
-                    >
-                      <Text style={styles.openMapsButtonText}>Open in Maps</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : event.location?.name ? (
-                  <View style={styles.mapContainer}>
-                    <Text style={styles.mapPlaceholder}>
-                      Map view coming soon - coordinates needed
-                    </Text>
-                  </View>
-                ) : null}
+                        showsUserLocation={false}
+                        showsMyLocationButton={false}
+                      >
+                        <Marker
+                          coordinate={{
+                            latitude: lat,
+                            longitude: lng,
+                          }}
+                          title={event.location?.name || 'Event Location'}
+                          description={event.location_address || event.location?.address || 'Event Address'}
+                        />
+                      </MapView>
+                      <TouchableOpacity 
+                        style={styles.openMapsButton}
+                        onPress={() => openInMaps(lat, lng)}
+                      >
+                        <Text style={styles.openMapsButtonText}>Open in Maps</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : event.location?.name ? (
+                    <View style={styles.mapContainer}>
+                      <Text style={styles.mapPlaceholder}>
+                        Map view coming soon - coordinates needed
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
               </View>
 
               {/* Date and Time */}

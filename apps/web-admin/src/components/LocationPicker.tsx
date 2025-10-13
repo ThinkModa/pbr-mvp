@@ -37,8 +37,17 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const getInitialValue = () => {
     if (typeof value === 'string') {
       return value;
-    } else if (value && typeof value === 'object' && value.name) {
-      return value.name;
+    } else if (value && typeof value === 'object') {
+      // Handle different object structures
+      if (value.name) {
+        return value.name;
+      } else if (value.address) {
+        return value.address;
+      } else if (value.formatted_address) {
+        return value.formatted_address;
+      }
+      // If it's an object but no readable properties, return empty string
+      return '';
     }
     return '';
   };

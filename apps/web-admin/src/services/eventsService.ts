@@ -102,7 +102,7 @@ export class EventsService {
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             organization_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // PBR Community org
-            status: 'published', // Set as published by default
+            status: eventData.status || 'published',
             is_public: true, // Make events visible to mobile app
           })
       .select()
@@ -213,7 +213,7 @@ export class EventsService {
             has_tracks: eventData.has_tracks ?? false,
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-            status: 'published', // Keep as published when updating
+            status: eventData.status || 'published',
             is_public: true, // Keep events visible to mobile app
             updated_at: new Date().toISOString(),
           })

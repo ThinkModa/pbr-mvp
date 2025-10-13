@@ -144,6 +144,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     showAttendeeCount: true,
     hasTracks: false,
     coverImageUrl: '',
+    status: 'published' as 'draft' | 'published' | 'cancelled' | 'completed',
   });
 
   // Image upload state
@@ -455,6 +456,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       showAttendeeCount: event.show_attendee_count,
       hasTracks: event.has_tracks,
       coverImageUrl: event.cover_image_url || '',
+      status: (event as any).status || 'published',
     });
     
     // Set image preview for existing images
@@ -507,6 +509,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       showAttendeeCount: true,
       hasTracks: false,
       coverImageUrl: '',
+      status: 'published',
     });
     setActivities([]);
     setEventSpeakers([]);
@@ -535,6 +538,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         show_attendee_count: eventFormData.showAttendeeCount,
         has_tracks: eventFormData.hasTracks,
         cover_image_url: eventFormData.coverImageUrl,
+        status: eventFormData.status,
         activities: activities
           .filter(activity => activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime)
           .map(activity => ({
@@ -2747,6 +2751,30 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                       onChange={(location) => setEventFormData(prev => ({ ...prev, location }))}
                       placeholder="Search for a location..."
                     />
+                  </div>
+
+                  {/* Event Status */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Event Status
+                    </label>
+                    <select
+                      value={eventFormData.status}
+                      onChange={(e) => setEventFormData(prev => ({ ...prev, status: e.target.value as 'draft' | 'published' | 'cancelled' | 'completed' }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="published">Published</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="completed">Completed</option>
+                    </select>
                   </div>
 
                   {/* Capacity and Price */}

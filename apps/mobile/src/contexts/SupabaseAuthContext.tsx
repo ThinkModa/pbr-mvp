@@ -107,6 +107,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Subscribe to user profile changes for real-time role updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const { data: { subscription } } = supabase
+      .channel('user-profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${user.id}`,
+        },
+        async (payload) => {
+          console.log('User profile updated:', payload);
+          // Refresh user data when profile changes
+          await refreshUser();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id]);
+
   // Load user profile from public.users table
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
