@@ -11,7 +11,10 @@ import {
   SafeAreaView,
   Alert,
   RefreshControl,
+  Linking,
+  Platform,
 } from 'react-native';
+// import MapView, { Marker } from 'react-native-maps';
 import { EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { CalendarService, CalendarEvent } from '../services/calendarService';
@@ -83,7 +86,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         title: event.title,
         startDate: new Date(event.start_time + 'Z'),
         endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
+        location: event.location?.name || undefined,
         notes: event.description,
       };
       
@@ -103,7 +106,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         title: event.title,
         startDate: new Date(event.start_time + 'Z'),
         endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
+        location: event.location?.name || undefined,
         notes: event.description,
       };
       
@@ -132,7 +135,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         title: event.title,
         startDate: new Date(event.start_time + 'Z'),
         endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
+        location: event.location?.name || undefined,
         notes: event.description,
       };
       
@@ -161,7 +164,9 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
       await RSVPService.createEventRSVP(event.id, user.id, status);
       
       setUserRSVP(status);
-      onRSVP(event.id, status);
+      // Convert 'maybe', 'waitlist', 'pending' to null for onRSVP callback
+      const rsvpStatus = (status === 'maybe' || status === 'waitlist' || status === 'pending') ? null : status;
+      onRSVP(event.id, rsvpStatus);
       
       // Show confirmation
       Alert.alert(
@@ -298,6 +303,18 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     }
   };
 
+  const openInMaps = (coordinates: { latitude: number; longitude: number }) => {
+    const { latitude, longitude } = coordinates;
+    const url = Platform.OS === 'ios' 
+      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
+      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
+    
+    Linking.openURL(url).catch(err => {
+      console.error('Error opening maps:', err);
+      Alert.alert('Error', 'Unable to open maps. Please try again.');
+    });
+  };
+
   if (!event) return null;
 
   const startDate = new Date(event.start_time + 'Z');
@@ -398,6 +415,13 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                     {event.location?.name || 'Location TBD'}
                   </Text>
                 </View>
+                
+                {/* Map View - Temporarily disabled until coordinates are available */}
+                {false && event?.location && (
+                  <View style={styles.mapContainer}>
+                    <Text style={styles.mapPlaceholder}>Map view coming soon</Text>
+                  </View>
+                )}
               </View>
 
               {/* Date and Time */}
@@ -899,6 +923,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  mapContainer: {
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  map: {
+    height: 150,
+    width: '100%',
+  },
+  openMapsButton: {
+    backgroundColor: '#D29507',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  openMapsButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mapPlaceholder: {
+    textAlign: 'center',
+    color: '#6B7280',
+    fontSize: 14,
+    padding: 20,
   },
   dateTimeSection: {
     marginBottom: 24,

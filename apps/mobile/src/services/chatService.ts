@@ -31,6 +31,8 @@ export interface ChatThread {
   otherUser?: {
     id: string;
     name: string;
+    first_name: string | null;
+    last_name: string | null;
     email: string;
     profile_image_url: string | null;
   };
@@ -499,7 +501,7 @@ export class ChatService {
       try {
         const { data: members, error } = await supabase
           .from('chat_memberships')
-          .select('user_id, users!inner(id,name,email,profile_image_url)')
+          .select('user_id, users!inner(id,name,first_name,last_name,email,profile_image_url)')
           .eq('thread_id', thread.id)
           .neq('user_id', userId);
         

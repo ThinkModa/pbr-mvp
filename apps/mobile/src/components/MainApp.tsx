@@ -16,7 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-// import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { supabase } from '../lib/supabase';
 import { EventsService, EventWithActivities } from '../services/eventsService';
@@ -2055,13 +2055,116 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - expo-image-picker requires native compilation
-    Alert.alert(
-      'Image Upload Coming Soon', 
-      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
-      [{ text: 'OK' }]
-    );
-    console.log('Image upload temporarily disabled - requires native compilation');
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Select Profile Picture',
+        'Choose how you want to add a profile picture',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Photo Library', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please grant permission to access your camera to take a photo.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        await uploadProfileImage(asset.uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      if (!user) {
+        Alert.alert('Error', 'User not found. Please try again.');
+        return;
+      }
+
+      // Create a unique filename
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      // Convert image to blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, blob, {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Error uploading image:', error);
+        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update user profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ profile_image_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Update Failed', 'Failed to update profile. Please try again.');
+        return;
+      }
+
+      // Update local profile state
+      setProfile(prev => prev ? { ...prev, profile_image_url: publicUrl } : null);
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+    }
   };
 
   if (loading) {
@@ -2829,7 +2932,14 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     if (activeTab === 'notifications' && thread.event) {
       return thread.event.title;
     } else if (activeTab === 'direct' && thread.otherUser) {
-      return thread.otherUser.name;
+      // Use name if available, otherwise construct from first_name and last_name
+      if (thread.otherUser.name) {
+        return thread.otherUser.name;
+      } else if (thread.otherUser.first_name || thread.otherUser.last_name) {
+        return `${thread.otherUser.first_name || ''} ${thread.otherUser.last_name || ''}`.trim();
+      } else {
+        return thread.otherUser.email;
+      }
     } else if (thread.name) {
       return thread.name;
     }
@@ -3205,9 +3315,6 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity style={styles.newMessageButton}>
-          <Text style={styles.newMessageButtonText}>+</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Chat Tabs */}
@@ -3402,9 +3509,24 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
           ) : (
             <>
               <View style={styles.userSelectionHeader}>
-                <Text style={styles.userSelectionTitle}>Name Chat</Text>
                 <TouchableOpacity onPress={handleCancelNameChat}>
                   <Text style={styles.userSelectionCancelButton}>Back</Text>
+                </TouchableOpacity>
+                <Text style={styles.userSelectionTitle}>Name Chat</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.startChatButtonHeader,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonDisabled
+                  ]}
+                  onPress={handleCreateGroupChat}
+                  disabled={!chatName.trim() || creatingThread}
+                >
+                  <Text style={[
+                    styles.startChatButtonText,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonTextDisabled
+                  ]}>
+                    {creatingThread ? 'Creating...' : 'Start'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -3427,23 +3549,6 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
                 </Text>
               </View>
 
-              <View style={styles.userSelectionFooter}>
-                <TouchableOpacity
-                  style={[
-                    styles.startChatButton,
-                    (!chatName.trim() || creatingThread) && styles.startChatButtonDisabled
-                  ]}
-                  onPress={handleCreateGroupChat}
-                  disabled={!chatName.trim() || creatingThread}
-                >
-                  <Text style={[
-                    styles.startChatButtonText,
-                    (!chatName.trim() || creatingThread) && styles.startChatButtonTextDisabled
-                  ]}>
-                    {creatingThread ? 'Creating...' : 'Start Group Chat'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </>
           )}
         </SafeAreaView>
@@ -3535,7 +3640,28 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
 
     // Subscribe to new messages
     const unsubscribeMessages = RealTimeService.subscribeToMessages(threadId, (newMessage) => {
-      setMessages(prev => [...prev, newMessage]);
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => msg.id === newMessage.id);
+        if (messageExists) {
+          return prev;
+        }
+        // Convert RealtimeMessage to ChatMessage format
+        const chatMessage: ChatMessage = {
+          ...newMessage,
+          replyToId: null,
+          eventId: null,
+          attachments: [],
+          isEdited: false,
+          editedAt: null,
+          isDeleted: false,
+          deletedAt: null,
+          reactions: [],
+          updatedAt: newMessage.createdAt,
+          user: newMessage.user || { id: newMessage.userId, name: 'Unknown', email: '', profile_image_url: null }
+        };
+        return [...prev, chatMessage];
+      });
       
       // Mark as read if user is viewing the thread
       ChatService.markMessagesAsRead(threadId, user.id);
@@ -3558,7 +3684,14 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     try {
       setSending(true);
       const message = await ChatService.sendMessage(threadId, user.id, newMessage.trim());
-      setMessages(prev => [...prev, message]);
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => msg.id === message.id);
+        if (messageExists) {
+          return prev;
+        }
+        return [...prev, message];
+      });
       setNewMessage('');
     } catch (err) {
       console.error('Error sending message:', err);
@@ -3570,7 +3703,11 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
 
   const formatTime = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
   };
 
   const getThreadTitle = (): string => {
@@ -4944,6 +5081,13 @@ const styles = StyleSheet.create({
   startChatButtonTextDisabled: {
     color: '#9CA3AF',
   },
+  startChatButtonHeader: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
   nameChatContent: {
     flex: 1,
     padding: 20,
@@ -5047,6 +5191,7 @@ const styles = StyleSheet.create({
   profilePointsIcon: {
     fontSize: 20,
     marginRight: 8,
+    color: '#D29507',
   },
   profilePointsText: {
     fontSize: 18,

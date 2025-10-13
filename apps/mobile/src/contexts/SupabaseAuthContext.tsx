@@ -45,6 +45,7 @@ interface AuthContextType {
     role: 'business' | 'general';
   }) => Promise<{ error: any | null }>;
   signIn: (email: string, password: string) => Promise<{ error: any | null }>;
+  resetPassword: (email: string) => Promise<{ error: any | null }>;
   signInWithGoogle: () => Promise<{ error: any | null }>;
   signOut: () => Promise<{ error: any | null }>;
   
@@ -242,9 +243,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Google sign in (placeholder for future implementation)
+  // Password reset
+  const resetPassword = async (email: string) => {
+    try {
+      console.log('🔐 Attempting password reset for:', email);
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://zqjziejllixifpwzbdnf.supabase.co/auth/v1/verify',
+      });
+
+      if (error) {
+        console.error('❌ Password reset error:', error);
+        return { error };
+      }
+
+      console.log('✅ Password reset email sent successfully');
+      return { error: null };
+    } catch (error) {
+      console.error('💥 Password reset exception:', error);
+      return { error };
+    }
+  };
+
+  // Google sign in
   const signInWithGoogle = async () => {
-    return { error: { message: 'Google sign-in not implemented yet' } };
+    try {
+      console.log('🔐 Attempting Google sign in...');
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'https://zqjziejllixifpwzbdnf.supabase.co/auth/v1/callback',
+        }
+      });
+
+      if (error) {
+        console.error('❌ Google sign in error:', error);
+        return { error };
+      }
+
+      console.log('✅ Google sign in initiated successfully');
+      return { error: null };
+    } catch (error) {
+      console.error('💥 Google sign in exception:', error);
+      return { error };
+    }
   };
 
   // Sign out
@@ -279,6 +322,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading,
     signUp,
     signIn,
+    resetPassword,
     signInWithGoogle,
     signOut,
     refreshUser,

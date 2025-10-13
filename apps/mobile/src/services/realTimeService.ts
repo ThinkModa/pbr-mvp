@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { NotificationService } from './notificationService';
 // Real-time service for live chat updates
 // Uses Supabase Realtime via REST API polling for Expo Go compatibility
 
@@ -150,6 +151,13 @@ export class RealTimeService {
         // Enrich message with user data
         const enrichedMessage = await this.enrichMessage(message);
         
+        // Send push notification for new message
+        try {
+          await this.sendChatNotification(enrichedMessage, threadId);
+        } catch (error) {
+          console.error('Error sending chat notification:', error);
+        }
+        
         // Notify callbacks
         const callbacks = this.messageCallbacks.get(threadId);
         if (callbacks) {
@@ -232,6 +240,44 @@ export class RealTimeService {
     }
 
     return enriched;
+  }
+
+  // Send push notification for new chat message
+  private static async sendChatNotification(message: RealtimeMessage, threadId: string): Promise<void> {
+    try {
+      // Get thread information to determine notification title
+      const { data: thread, error: threadError } = await supabase
+        .from('chat_threads')
+        .select('name, type')
+        .eq('id', threadId)
+        .single();
+
+      if (threadError || !thread) {
+        console.error('Error fetching thread for notification:', threadError);
+        return;
+      }
+
+      // Determine notification title based on thread type
+      let title: string;
+      if (thread.type === 'dm') {
+        title = message.user?.name || 'New Message';
+      } else {
+        title = thread.name || 'Group Chat';
+      }
+
+      // Create notification
+      await NotificationService.createChatNotification({
+        title,
+        body: message.content,
+        data: {
+          threadId,
+          messageId: message.id,
+          type: 'chat_message'
+        }
+      });
+    } catch (error) {
+      console.error('Error creating chat notification:', error);
+    }
   }
 
   // Clean up all listeners (call when app goes to background)

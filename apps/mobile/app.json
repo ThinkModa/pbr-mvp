@@ -20,6 +20,9 @@
         "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY"
       }
     },
     "android": {
@@ -27,11 +30,17 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.helprs.pbr_mvp"
+      "package": "com.helprs.pbr_mvp",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "com.thinkmodalabs.pbr-mvp",
     "sdkVersion": "54.0.0",
     "extra": {
       "eas": {
