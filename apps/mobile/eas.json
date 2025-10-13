@@ -20,11 +20,34 @@
       "channel": "staging",
       "env": {
         "APP_ENV": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "staging-internal": {
+      "distribution": "internal",
+      "channel": "staging-internal",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
       }
     },
     "testflight": {
       "distribution": "store",
       "channel": "testflight",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "staging-testflight": {
+      "distribution": "internal",
+      "channel": "staging-testflight",
+      "env": {
+        "APP_ENV": "staging"
+      },
       "ios": {
         "buildConfiguration": "Release"
       }

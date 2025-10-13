@@ -89,6 +89,9 @@ export class EventsService {
             start_time: eventData.start_date,
             end_time: eventData.end_date,
             location: eventData.location,
+            location_address: eventData.location.address,
+            latitude: eventData.location.coordinates?.lat,
+            longitude: eventData.location.coordinates?.lng,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
@@ -118,7 +121,7 @@ export class EventsService {
         description: activity.description,
         start_time: activity.start_time,
         end_time: activity.end_time,
-        location: { name: activity.location },
+        location: activity.location,
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
