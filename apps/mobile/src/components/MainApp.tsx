@@ -2481,13 +2481,85 @@ const ProfileEditModal: React.FC<{
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - expo-image-picker requires native compilation
-    Alert.alert(
-      'Image Upload Coming Soon', 
-      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
-      [{ text: 'OK' }]
-    );
-    console.log('Image upload temporarily disabled - requires native compilation');
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
+        return;
+      }
+      // Show action sheet
+      Alert.alert(
+        'Select Profile Picture',
+        'Choose how you want to add a profile picture',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Photo Library', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfileImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      // Convert image URI to blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      
+      // Create unique filename
+      const fileExt = imageUri.split('.').pop() || 'jpg';
+      const fileName = `${formData.id}-${Date.now()}.${fileExt}`;
+      
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Upload error:', error);
+        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Update profile with new image URL
+      const updatedFormData = { ...formData, avatarUrl: publicUrl };
+      setFormData(updatedFormData);
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
+    }
   };
 
   const tShirtSizes = ['XS', 'S', 'M', 'L', '2XL', '3XL', '4XL'];

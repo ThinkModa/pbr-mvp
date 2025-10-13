@@ -19,7 +19,7 @@ interface AuthScreenProps {
 }
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
-  const { signIn, signUp, resetPassword, signInWithGoogle, loading } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithGoogle, signInWithApple, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -88,6 +88,16 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
     if (error) {
       Alert.alert('Google Sign In Failed', error.message);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setIsLoading(true);
+    const { error } = await signInWithApple();
+    setIsLoading(false);
+
+    if (error) {
+      Alert.alert('Apple Sign In Failed', error.message);
     }
   };
 
@@ -298,6 +308,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </TouchableOpacity>
 
+            {/* Apple Sign In */}
+            <TouchableOpacity
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+              disabled={isLoading}
+            >
+              <Text style={styles.appleButtonText}>Continue with Apple</Text>
+            </TouchableOpacity>
+
             {/* Toggle Mode */}
             <TouchableOpacity style={styles.toggleButton} onPress={toggleMode}>
               <Text style={styles.toggleButtonText}>
@@ -501,6 +520,21 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: '#D29507',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  appleButton: {
+    backgroundColor: '#000000',
+    width: '100%',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#000000',
+  },
+  appleButtonText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -47,6 +47,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any | null }>;
   resetPassword: (email: string) => Promise<{ error: any | null }>;
   signInWithGoogle: () => Promise<{ error: any | null }>;
+  signInWithApple: () => Promise<{ error: any | null }>;
   signOut: () => Promise<{ error: any | null }>;
   
   // User management
@@ -290,6 +291,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Apple sign in
+  const signInWithApple = async () => {
+    try {
+      console.log('🔐 Attempting Apple sign in...');
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo: 'https://zqjziejllixifpwzbdnf.supabase.co/auth/v1/callback',
+        }
+      });
+
+      if (error) {
+        console.error('❌ Apple sign in error:', error);
+        return { error };
+      }
+
+      console.log('✅ Apple sign in initiated successfully');
+      return { error: null };
+    } catch (error) {
+      console.error('💥 Apple sign in exception:', error);
+      return { error };
+    }
+  };
+
   // Sign out
   const signOut = async () => {
     try {
@@ -324,6 +350,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signIn,
     resetPassword,
     signInWithGoogle,
+    signInWithApple,
     signOut,
     refreshUser,
   };

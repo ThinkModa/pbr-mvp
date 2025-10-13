@@ -79,15 +79,8 @@ export class AvatarService {
   static generateBackgroundColor(name: string): string {
     if (!name) return '#6B7280';
 
-    // Simple hash function to generate consistent colors
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-
-    // Convert to positive number and generate color
-    const color = Math.abs(hash) % 16777215; // 16777215 = 0xFFFFFF
-    return '#' + color.toString(16).padStart(6, '0');
+    // Always return golden color for consistency
+    return '#D29507';
   }
 
   /**
