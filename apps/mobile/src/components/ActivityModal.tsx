@@ -15,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { showLocation } from 'react-native-map-link';
 import { RSVPService } from '../services/rsvpService';
 import { SpeakersService, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
@@ -223,15 +224,20 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
     }
   };
 
-  const openInMaps = (latitude: number, longitude: number) => {
-    const url = Platform.OS === 'ios' 
-      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
-    
-    Linking.openURL(url).catch(err => {
-      console.error('Error opening maps:', err);
-      Alert.alert('Error', 'Unable to open maps. Please try again.');
-    });
+  const openInMaps = async (latitude: number, longitude: number, title?: string, address?: string) => {
+    try {
+      await showLocation({
+        latitude,
+        longitude,
+        title: title || 'Activity Location',
+        dialogTitle: 'Open in Maps',
+        dialogMessage: 'Choose your preferred maps app',
+        cancelText: 'Cancel',
+        alwaysIncludeGoogle: true,
+      });
+    } catch (error) {
+      console.error('Error opening maps:', error);
+    }
   };
 
   const startDate = activity ? new Date(activity.start_time + 'Z') : new Date();
@@ -590,6 +596,12 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                     }}
                     showsUserLocation={false}
                     showsMyLocationButton={false}
+                    onPress={() => openInMaps(
+                      lat, 
+                      lng, 
+                      activity.location?.name || activity.title,
+                      activity.location_address || activity.location?.address
+                    )}
                   >
                     <Marker
                       coordinate={{
@@ -600,12 +612,6 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                       description={activity.location_address || activity.location?.address || 'Activity Address'}
                     />
                   </MapView>
-                  <TouchableOpacity 
-                    style={styles.openMapsButton}
-                    onPress={() => openInMaps(lat, lng)}
-                  >
-                    <Text style={styles.openMapsButtonText}>Open in Maps</Text>
-                  </TouchableOpacity>
                 </View>
               ) : activity.location?.name ? (
                 <View style={styles.mapContainer}>
@@ -793,17 +799,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#9CA3AF',
     fontSize: 14,
-  },
-  openMapsButton: {
-    backgroundColor: '#D29507',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  openMapsButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
   },
   // Info Section
   infoSection: {

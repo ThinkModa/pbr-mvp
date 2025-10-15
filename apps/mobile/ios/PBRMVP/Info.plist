@@ -86,5 +86,14 @@
     <string>Light</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>comgooglemaps</string>
+      <string>citymapper</string>
+      <string>waze</string>
+      <string>transit</string>
+      <string>yandexnavi</string>
+      <string>moovit</string>
+    </array>
   </dict>
 </plist>

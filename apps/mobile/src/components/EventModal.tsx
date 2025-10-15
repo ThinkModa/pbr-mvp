@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { showLocation } from 'react-native-map-link';
 import { EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { CalendarService, CalendarEvent } from '../services/calendarService';
@@ -54,18 +55,42 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  console.log('EventModal render:', { visible, event: event?.title });
+  console.log('🎬 EventModal render:', { visible, event: event?.title });
+  console.log('🎬 EventModal: About to render map placeholder section');
+
+  // Debug: Log event data when modal opens
+  useEffect(() => {
+    if (visible && event) {
+      console.log('🎬 EventModal opened with event:', {
+        eventId: event.id,
+        eventTitle: event.title,
+        location: event.location,
+        location_address: event.location_address,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        hasLocationObject: !!event.location,
+        hasCoordinatesInLocation: !!(event.location?.coordinates),
+        hasLatitudeField: event.latitude !== null && event.latitude !== undefined,
+        hasLongitudeField: event.longitude !== null && event.longitude !== undefined
+      });
+    }
+  }, [visible, event]);
 
   // Open in Maps function
-  const openInMaps = (latitude: number, longitude: number) => {
-    const url = Platform.OS === 'ios' 
-      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
-    
-    Linking.openURL(url).catch(err => {
-      console.error('Error opening maps:', err);
-      Alert.alert('Error', 'Unable to open maps. Please try again.');
-    });
+  const openInMaps = async (latitude: number, longitude: number, title?: string, address?: string) => {
+    try {
+      await showLocation({
+        latitude,
+        longitude,
+        title: title || 'Event Location',
+        dialogTitle: 'Open in Maps',
+        dialogMessage: 'Choose your preferred maps app',
+        cancelText: 'Cancel',
+        alwaysIncludeGoogle: true,
+      });
+    } catch (error) {
+      console.error('Error opening maps:', error);
+    }
   };
 
   // Load user's RSVP status, calendar status, speakers, and businesses when modal opens
@@ -762,6 +787,20 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                 );
               })()}
 
+              {/* TEST: Simple section after vendors */}
+              <View style={{ backgroundColor: 'blue', padding: 15, margin: 10, borderRadius: 8 }}>
+                <Text style={{ color: 'white', fontSize: 18, textAlign: 'center', fontWeight: 'bold' }}>
+                  🔵 TEST: After Vendors Section
+                </Text>
+                <Text style={{ color: 'white', fontSize: 14, textAlign: 'center', marginTop: 5 }}>
+                  This should appear right after vendors
+                </Text>
+              </View>
+
+            </View>
+
+            {/* Location Container - Map View and Placeholder */}
+            <View style={styles.locationContainer}>
               {/* Map View - Enabled when coordinates are available */}
               {(() => {
                 // Get coordinates from either the separate fields or the location object
@@ -799,6 +838,12 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                           }}
                           showsUserLocation={false}
                           showsMyLocationButton={false}
+                          onPress={() => openInMaps(
+                            lat, 
+                            lng, 
+                            event.location?.name || event.title,
+                            event.location_address || event.location?.address
+                          )}
                         >
                           <Marker
                             coordinate={{
@@ -809,12 +854,6 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                             description={event.location_address || event.location?.address || 'Event Address'}
                           />
                         </MapView>
-                        <TouchableOpacity 
-                          style={styles.openMapsButton}
-                          onPress={() => openInMaps(lat, lng)}
-                        >
-                          <Text style={styles.openMapsButtonText}>Open in Maps</Text>
-                        </TouchableOpacity>
                       </>
                     ) : (
                       <Text style={styles.mapPlaceholder}>
@@ -827,6 +866,15 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                   </View>
                 );
               })()}
+
+              {/* Map Placeholder Image - Always show at bottom of content */}
+              <View style={styles.mapPlaceholderContainer}>
+                <Image
+                  source={require('../../assets/icon.png')}
+                  style={styles.mapPlaceholderImage}
+                  resizeMode="cover"
+                />
+              </View>
             </View>
           </ScrollView>
 
@@ -946,7 +994,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 20,
+    paddingBottom: 120, // Increased padding to account for footer
   },
   imageContainer: {
     height: 200,
@@ -967,6 +1015,11 @@ const styles = StyleSheet.create({
   },
   detailsContainer: {
     padding: 20,
+    paddingBottom: 120, // Extra bottom padding to allow scrolling to see all content
+  },
+  locationContainer: {
+    padding: 20,
+    paddingTop: 0, // No top padding since detailsContainer already has bottom padding
   },
   titleSection: {
     marginBottom: 24,
@@ -1007,22 +1060,22 @@ const styles = StyleSheet.create({
     height: 150,
     width: '100%',
   },
-  openMapsButton: {
-    backgroundColor: '#D29507',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  openMapsButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   mapPlaceholder: {
     textAlign: 'center',
     color: '#6B7280',
     fontSize: 14,
     padding: 20,
+  },
+  mapPlaceholderContainer: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  mapPlaceholderImage: {
+    width: '100%',
+    height: 150,
   },
   dateTimeSection: {
     marginBottom: 24,

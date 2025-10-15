@@ -86,9 +86,15 @@ export class EventsService {
         longitude: firstEvent.longitude
       });
       
-      console.log('First event activities:', firstEvent.activities);
       if (firstEvent.activities && firstEvent.activities.length > 0) {
-        console.log('First activity details:', firstEvent.activities[0]);
+        console.log('📍 First activity location data:', {
+          activityId: firstEvent.activities[0].id,
+          activityTitle: firstEvent.activities[0].title,
+          location: firstEvent.activities[0].location,
+          location_address: firstEvent.activities[0].location_address,
+          latitude: firstEvent.activities[0].latitude,
+          longitude: firstEvent.activities[0].longitude
+        });
       }
     }
     

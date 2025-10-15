@@ -590,7 +590,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Events</Text>
+          <Text style={styles.headerTitle}>events</Text>
                 <View style={[styles.dataSourceIndicator, { backgroundColor: '#10B981' }]}>
                   <Text style={styles.dataSourceText}>
                     LIVE
@@ -1300,6 +1300,26 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                       </View>
                     );
                   })()}
+                </View>
+
+                {/* Map Section */}
+                <View style={{ padding: 20, paddingTop: 0 }}>
+                  <View style={{ backgroundColor: '#F3F4F6', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
+                    <View style={{ 
+                      height: 150, 
+                      justifyContent: 'center', 
+                      alignItems: 'center',
+                      backgroundColor: '#E5E7EB'
+                    }}>
+                      <Text style={{ fontSize: 48, marginBottom: 10 }}>🗺️</Text>
+                      <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
+                        Map view coming soon
+                      </Text>
+                      <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 5, paddingHorizontal: 20 }}>
+                        {selectedEvent.location?.name || selectedEvent.location_address || 'Location details will be displayed here'}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             ) : modalView === 'activity' && selectedActivity ? (
@@ -4202,7 +4222,7 @@ const MainApp: React.FC = () => {
             onPress={() => setCurrentScreen('events')}
           >
             <Text style={styles.navIcon}>📅</Text>
-            <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>Events</Text>
+            <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>events</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
