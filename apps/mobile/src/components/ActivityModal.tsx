@@ -10,7 +10,11 @@ import {
   SafeAreaView,
   Image,
   RefreshControl,
+  Platform,
+  Linking,
+  Alert,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { RSVPService } from '../services/rsvpService';
 import { SpeakersService, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
@@ -27,7 +31,14 @@ interface Activity {
   description: string | null;
   start_time: string;
   end_time: string;
-  location: { name: string } | null;
+  location: { 
+    name: string; 
+    address?: string; 
+    coordinates?: { lat: number; lng: number; } 
+  } | null;
+  location_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
@@ -212,6 +223,17 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
     }
   };
 
+  const openInMaps = (latitude: number, longitude: number) => {
+    const url = Platform.OS === 'ios' 
+      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
+      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
+    
+    Linking.openURL(url).catch(err => {
+      console.error('Error opening maps:', err);
+      Alert.alert('Error', 'Unable to open maps. Please try again.');
+    });
+  };
+
   const startDate = activity ? new Date(activity.start_time + 'Z') : new Date();
   const endDate = activity ? new Date(activity.end_time + 'Z') : new Date();
   
@@ -327,13 +349,23 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
             </View>
 
             {/* Location */}
-            {activity.location?.name && (
-              <View style={styles.locationSection}>
-                <Text style={styles.locationText}>
-                  📍 {activity.location.name}
-                </Text>
+            <View style={styles.locationSection}>
+              <View style={styles.locationContainer}>
+                <Text style={styles.locationIcon}>📍</Text>
+                <View style={{ flex: 1 }}>
+                  {activity.location?.name && (
+                    <Text style={styles.locationText}>
+                      {activity.location.name}
+                    </Text>
+                  )}
+                  {(activity.location?.address || activity.location_address) && (
+                    <Text style={styles.locationAddress}>
+                      {activity.location?.address || activity.location_address}
+                    </Text>
+                  )}
+                </View>
               </View>
-            )}
+            </View>
 
             {/* Activity Info */}
             <View style={styles.infoSection}>
@@ -439,13 +471,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                         ) : (
                           <View style={styles.sponsorLogoPlaceholder}>
                             <Text style={styles.sponsorLogoText}>
-                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                              {('business' in item ? item.business?.name : (item as any).organization?.name)?.substring(0, 2).toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
                       <Text style={styles.sponsorName} numberOfLines={1}>
-                        {'business' in item ? item.business?.name : item.organization?.name}
+                        {'business' in item ? item.business?.name : (item as any).organization?.name}
                       </Text>
                       <Text style={styles.sponsorLevel} numberOfLines={1}>
                         {('business' in item ? item.sponsorshipLevel : item.role) || 'Sponsor'}
@@ -492,13 +524,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                         ) : (
                           <View style={styles.vendorLogoPlaceholder}>
                             <Text style={styles.vendorLogoText}>
-                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                              {('business' in item ? item.business?.name : (item as any).organization?.name)?.substring(0, 2).toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
                       <Text style={styles.vendorName} numberOfLines={1}>
-                        {'business' in item ? item.business?.name : item.organization?.name}
+                        {'business' in item ? item.business?.name : (item as any).organization?.name}
                       </Text>
                       <Text style={styles.vendorType} numberOfLines={1}>
                         {('business' in item ? item.role : item.role) || 'Vendor'}
@@ -529,6 +561,60 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                 </TouchableOpacity>
               </View>
             )}
+
+            {/* Map View */}
+            {(() => {
+              const lat = activity.latitude || activity.location?.coordinates?.lat;
+              const lng = activity.longitude || activity.location?.coordinates?.lng;
+              
+              console.log('🗺️ ActivityModal map coordinates:', {
+                activityId: activity.id,
+                activityTitle: activity.title,
+                latitude: activity.latitude,
+                longitude: activity.longitude,
+                locationCoordinates: activity.location?.coordinates,
+                finalLat: lat,
+                finalLng: lng,
+                hasCoordinates: !!(lat && lng)
+              });
+              
+              return lat && lng ? (
+                <View style={styles.mapContainer}>
+                  <MapView
+                    style={styles.map}
+                    initialRegion={{
+                      latitude: lat,
+                      longitude: lng,
+                      latitudeDelta: 0.01,
+                      longitudeDelta: 0.01,
+                    }}
+                    showsUserLocation={false}
+                    showsMyLocationButton={false}
+                  >
+                    <Marker
+                      coordinate={{
+                        latitude: lat,
+                        longitude: lng,
+                      }}
+                      title={activity.location?.name || 'Activity Location'}
+                      description={activity.location_address || activity.location?.address || 'Activity Address'}
+                    />
+                  </MapView>
+                  <TouchableOpacity 
+                    style={styles.openMapsButton}
+                    onPress={() => openInMaps(lat, lng)}
+                  >
+                    <Text style={styles.openMapsButtonText}>Open in Maps</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : activity.location?.name ? (
+                <View style={styles.mapContainer}>
+                  <Text style={styles.mapPlaceholder}>
+                    Map view coming soon - coordinates needed
+                  </Text>
+                </View>
+              ) : null;
+            })()}
           </View>
           )}
         </ScrollView>
@@ -676,6 +762,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4B5563',
     fontWeight: '500',
+  },
+  locationIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  locationAddress: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  mapContainer: {
+    marginTop: 20,
+    marginBottom: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  map: {
+    height: 150,
+    width: '100%',
+  },
+  mapPlaceholder: {
+    padding: 40,
+    textAlign: 'center',
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  openMapsButton: {
+    backgroundColor: '#D29507',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  openMapsButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
   // Info Section
   infoSection: {

@@ -36,6 +36,8 @@ interface AuthContextType {
   // Authentication state
   user: User | null;
   loading: boolean;
+  isConnected: boolean | null;
+  connectionError: string | null;
   
   // Authentication methods
   signUp: (email: string, password: string, userData: {
@@ -52,6 +54,7 @@ interface AuthContextType {
   
   // User management
   refreshUser: () => Promise<void>;
+  testConnection: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -63,17 +66,63 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // Test connection function
+  const testConnection = async () => {
+    try {
+      setConnectionError(null);
+      setLoading(true);
+      const { error } = await supabase.auth.getSession();
+      if (error) {
+        setIsConnected(false);
+        setConnectionError('Authentication service unavailable');
+        setLoading(false);
+        return false;
+      }
+      setIsConnected(true);
+      return true;
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      setIsConnected(false);
+      setConnectionError('Connection issue, retrying...');
+      setLoading(false);
+      return false;
+    }
+  };
 
   // Initialize auth state
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserProfile(session.user);
-      } else {
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setConnectionError('Authentication service unavailable');
+          setIsConnected(false);
+          setLoading(false);
+          return;
+        }
+        
+        setIsConnected(true);
+        setConnectionError(null);
+        
+        if (session?.user) {
+          await loadUserProfile(session.user);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Failed to initialize auth:', error);
+        setConnectionError('Connection issue, retrying...');
+        setIsConnected(false);
         setLoading(false);
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -111,7 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     if (!user?.id) return;
 
-    const { data: { subscription } } = supabase
+    const subscription = supabase
       .channel('user-profile-changes')
       .on(
         'postgres_changes',
@@ -175,6 +224,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('Error in loadUserProfile:', error);
+      setConnectionError('Failed to load user profile');
       setLoading(false);
     }
   };
@@ -373,6 +423,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     loading,
+    isConnected,
+    connectionError,
     signUp,
     signIn,
     resetPassword,
@@ -380,6 +432,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithApple,
     signOut,
     refreshUser,
+    testConnection,
   };
 
   return (

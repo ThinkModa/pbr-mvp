@@ -21,7 +21,7 @@ import { useAuth } from '../contexts/SupabaseAuthContext';
 import { supabase } from '../lib/supabase';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
-import { SpeakersService, EventSpeaker } from '../services/speakersService';
+import { SpeakersService, EventSpeaker, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
@@ -56,7 +56,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   
   // Speaker state management
   const [eventSpeakers, setEventSpeakers] = useState<EventSpeaker[]>([]);
-  const [activitySpeakers, setActivitySpeakers] = useState<EventSpeaker[]>([]);
+  const [activitySpeakers, setActivitySpeakers] = useState<ActivitySpeaker[]>([]);
   const [selectedSpeaker, setSelectedSpeaker] = useState<any>(null);
   const [speakerModalVisible, setSpeakerModalVisible] = useState(false);
   
@@ -2122,14 +2122,18 @@ const ProfileScreen: React.FC = () => {
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
-      // Convert image to blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      // Create FormData for React Native
+      const formData = new FormData();
+      formData.append('file', {
+        uri: imageUri,
+        type: `image/${fileExt}`,
+        name: fileName,
+      } as any);
 
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
         .from('avatars')
-        .upload(filePath, blob, {
+        .upload(filePath, formData, {
           contentType: `image/${fileExt}`,
           upsert: true
         });
@@ -2148,7 +2152,7 @@ const ProfileScreen: React.FC = () => {
       // Update user profile with new avatar URL
       const { error: updateError } = await supabase
         .from('users')
-        .update({ profile_image_url: publicUrl })
+        .update({ avatar_url: publicUrl })
         .eq('id', user.id);
 
       if (updateError) {
@@ -2158,7 +2162,7 @@ const ProfileScreen: React.FC = () => {
       }
 
       // Update local profile state
-      setProfile(prev => prev ? { ...prev, profile_image_url: publicUrl } : null);
+      setProfile((prev: any) => prev ? { ...prev, avatarUrl: publicUrl } : null);
       
       Alert.alert('Success', 'Profile picture updated successfully!');
     } catch (error) {
@@ -2524,18 +2528,22 @@ const ProfileEditModal: React.FC<{
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
-      // Convert image URI to blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      
       // Create unique filename
-      const fileExt = imageUri.split('.').pop() || 'jpg';
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${formData.id}-${Date.now()}.${fileExt}`;
+      
+      // Create FormData for React Native
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', {
+        uri: imageUri,
+        type: `image/${fileExt}`,
+        name: fileName,
+      } as any);
       
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
         .from('avatars')
-        .upload(fileName, blob, {
+        .upload(`avatars/${fileName}`, formDataUpload, {
           contentType: `image/${fileExt}`,
           upsert: true
         });
@@ -2549,9 +2557,21 @@ const ProfileEditModal: React.FC<{
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
-        .getPublicUrl(fileName);
+        .getPublicUrl(`avatars/${fileName}`);
 
-      // Update profile with new image URL
+      // Update user profile with new avatar URL in database
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', formData.id);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Update Failed', 'Failed to update profile. Please try again.');
+        return;
+      }
+
+      // Update local form data with new image URL
       const updatedFormData = { ...formData, avatarUrl: publicUrl };
       setFormData(updatedFormData);
       
@@ -2920,7 +2940,7 @@ const InterestsSelectionModal: React.FC<{
 // Chat Screen
 const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct'>('notifications');
+  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
   const [groupFilter, setGroupFilter] = useState<'events' | 'users'>('events');
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3728,7 +3748,7 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
           editedAt: null,
           isDeleted: false,
           deletedAt: null,
-          reactions: [],
+          reactions: {},
           updatedAt: newMessage.createdAt,
           user: newMessage.user || { id: newMessage.userId, name: 'Unknown', email: '', profile_image_url: null }
         };
@@ -4644,21 +4664,21 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e0e0',
     justifyContent: 'center',
   },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    marginRight: 12,
-    borderRadius: 16,
-    backgroundColor: '#f3f4f6',
-  },
+  // filterButton: { // Duplicate - removed
+  //   paddingHorizontal: 16,
+  //   paddingVertical: 6,
+  //   marginRight: 12,
+  //   borderRadius: 16,
+  //   backgroundColor: '#f3f4f6',
+  // },
   activeFilterButton: {
     backgroundColor: '#D29507',
   },
-  filterButtonText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
+  // filterButtonText: { // Duplicate - removed
+  //   fontSize: 12,
+  //   color: '#666',
+  //   fontWeight: '500',
+  // },
   activeFilterButtonText: {
     color: 'white',
   },
@@ -4939,57 +4959,7 @@ const styles = StyleSheet.create({
     color: '#D29507',
     fontWeight: 'bold',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#DC2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
+  // Duplicate styles removed - using the ones defined earlier
   activitiesSection: {
     marginTop: 12,
     padding: 12,

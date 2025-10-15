@@ -12,7 +12,11 @@ export interface EventWithActivities {
   description: string | null;
   start_time: string;
   end_time: string;
-  location: { name: string } | null;
+  location: { 
+    name: string; 
+    address?: string; 
+    coordinates?: { lat: number; lng: number; } 
+  } | null;
   location_address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -34,7 +38,14 @@ export interface Activity {
   description: string | null;
   start_time: string;
   end_time: string;
-  location: { name: string } | null;
+  location: { 
+    name: string; 
+    address?: string; 
+    coordinates?: { lat: number; lng: number; } 
+  } | null;
+  location_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
@@ -63,11 +74,21 @@ export class EventsService {
 
     console.log('✅ Successfully fetched', events?.length || 0, 'events from live database');
     
-    // Debug: Log the first event's activities
+    // Debug: Log the first event's location data
     if (events && events.length > 0) {
-      console.log('First event activities:', events[0].activities);
-      if (events[0].activities && events[0].activities.length > 0) {
-        console.log('First activity details:', events[0].activities[0]);
+      const firstEvent = events[0];
+      console.log('📍 First event location data:', {
+        eventId: firstEvent.id,
+        eventTitle: firstEvent.title,
+        location: firstEvent.location,
+        location_address: firstEvent.location_address,
+        latitude: firstEvent.latitude,
+        longitude: firstEvent.longitude
+      });
+      
+      console.log('First event activities:', firstEvent.activities);
+      if (firstEvent.activities && firstEvent.activities.length > 0) {
+        console.log('First activity details:', firstEvent.activities[0]);
       }
     }
     

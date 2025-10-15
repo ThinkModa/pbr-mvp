@@ -99,7 +99,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         startDate: new Date(event.start_time),
         endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
-        notes: event.description,
+        notes: event.description || undefined,
       };
       
       const exists = await CalendarService.eventExistsInCalendar(calendarEvent);
@@ -119,7 +119,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         startDate: new Date(event.start_time),
         endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
-        notes: event.description,
+        notes: event.description || undefined,
       };
       
       const success = await CalendarService.addEventToCalendar(calendarEvent);
@@ -148,7 +148,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         startDate: new Date(event.start_time),
         endDate: new Date(event.end_time),
         location: event.location?.name || undefined,
-        notes: event.description,
+        notes: event.description || undefined,
       };
       
       const success = await CalendarService.removeEventFromCalendar(calendarEvent);
@@ -315,17 +315,6 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     }
   };
 
-  const openInMaps = (coordinates: { latitude: number; longitude: number }) => {
-    const { latitude, longitude } = coordinates;
-    const url = Platform.OS === 'ios' 
-      ? `maps://maps.google.com/maps?daddr=${latitude},${longitude}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
-    
-    Linking.openURL(url).catch(err => {
-      console.error('Error opening maps:', err);
-      Alert.alert('Error', 'Unable to open maps. Please try again.');
-    });
-  };
 
   if (!event) return null;
 
@@ -423,59 +412,17 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                 <Text style={styles.eventTitle}>{event.title}</Text>
                 <View style={styles.locationContainer}>
                   <Text style={styles.locationIcon}>📍</Text>
-                  <Text style={styles.locationText}>
-                    {event.location?.name || 'Location TBD'}
-                  </Text>
-                  {event.location_address && (
-                    <Text style={styles.locationAddress}>
-                      {event.location_address}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locationText}>
+                      {event.location?.name || 'Location TBD'}
                     </Text>
-                  )}
-                </View>
-                
-                {/* Map View - Enabled when coordinates are available */}
-                {(() => {
-                  // Get coordinates from either the separate fields or the location object
-                  const lat = event.latitude || event.location?.coordinates?.lat;
-                  const lng = event.longitude || event.location?.coordinates?.lng;
-                  
-                  return lat && lng ? (
-                    <View style={styles.mapContainer}>
-                      <MapView
-                        style={styles.map}
-                        initialRegion={{
-                          latitude: lat,
-                          longitude: lng,
-                          latitudeDelta: 0.01,
-                          longitudeDelta: 0.01,
-                        }}
-                        showsUserLocation={false}
-                        showsMyLocationButton={false}
-                      >
-                        <Marker
-                          coordinate={{
-                            latitude: lat,
-                            longitude: lng,
-                          }}
-                          title={event.location?.name || 'Event Location'}
-                          description={event.location_address || event.location?.address || 'Event Address'}
-                        />
-                      </MapView>
-                      <TouchableOpacity 
-                        style={styles.openMapsButton}
-                        onPress={() => openInMaps(lat, lng)}
-                      >
-                        <Text style={styles.openMapsButtonText}>Open in Maps</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : event.location?.name ? (
-                    <View style={styles.mapContainer}>
-                      <Text style={styles.mapPlaceholder}>
-                        Map view coming soon - coordinates needed
+                    {(event.location?.address || event.location_address) && (
+                      <Text style={styles.locationAddress}>
+                        {event.location?.address || event.location_address}
                       </Text>
-                    </View>
-                  ) : null;
-                })()}
+                    )}
+                  </View>
+                </View>
               </View>
 
               {/* Date and Time */}
@@ -811,6 +758,72 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
+                  </View>
+                );
+              })()}
+
+              {/* Map View - Enabled when coordinates are available */}
+              {(() => {
+                // Get coordinates from either the separate fields or the location object
+                const lat = event.latitude || event.location?.coordinates?.lat;
+                const lng = event.longitude || event.location?.coordinates?.lng;
+                
+                console.log('🗺️ EventModal map coordinates:', {
+                  eventId: event.id,
+                  eventTitle: event.title,
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                  locationCoordinates: event.location?.coordinates,
+                  finalLat: lat,
+                  finalLng: lng,
+                  hasCoordinates: !!(lat && lng),
+                  locationName: event.location?.name,
+                  locationAddress: event.location_address,
+                  willShowMap: !!(lat && lng),
+                  willShowPlaceholder: !!(lat && lng) ? false : !!(event.location?.name),
+                  willShowNothing: !!(lat && lng) ? false : !(event.location?.name)
+                });
+                
+                // DEBUG: Always show map container for testing
+                return (
+                  <View style={styles.mapContainer}>
+                    {lat && lng ? (
+                      <>
+                        <MapView
+                          style={styles.map}
+                          initialRegion={{
+                            latitude: lat,
+                            longitude: lng,
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
+                          }}
+                          showsUserLocation={false}
+                          showsMyLocationButton={false}
+                        >
+                          <Marker
+                            coordinate={{
+                              latitude: lat,
+                              longitude: lng,
+                            }}
+                            title={event.location?.name || 'Event Location'}
+                            description={event.location_address || event.location?.address || 'Event Address'}
+                          />
+                        </MapView>
+                        <TouchableOpacity 
+                          style={styles.openMapsButton}
+                          onPress={() => openInMaps(lat, lng)}
+                        >
+                          <Text style={styles.openMapsButtonText}>Open in Maps</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <Text style={styles.mapPlaceholder}>
+                        {event.location?.name 
+                          ? `Map view coming soon - coordinates needed for ${event.location.name}`
+                          : 'No location information available'
+                        }
+                      </Text>
+                    )}
                   </View>
                 );
               })()}

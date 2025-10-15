@@ -1,0 +1,109 @@
+/* iOS-style Wheel Picker Styles */
+.wheel-picker {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  scroll-behavior: smooth;
+}
+
+.wheel-picker::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-picker {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Smooth scrolling */
+.wheel-picker {
+  scroll-behavior: smooth;
+}
+
+/* Selection highlight */
+.wheel-picker .selected-item {
+  background: rgba(59, 130, 246, 0.1);
+  color: #1F2937;
+  font-weight: 600;
+}
+
+/* Hover effects */
+.wheel-picker .wheel-item:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* Focus styles for accessibility */
+.wheel-picker:focus-within {
+  outline: 2px solid #3B82F6;
+  outline-offset: 2px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .wheel-picker {
+    background: #1F2937;
+    color: #F9FAFB;
+  }
+  
+  .wheel-picker .selected-item {
+    background: rgba(59, 130, 246, 0.2);
+    color: #F9FAFB;
+  }
+  
+  .wheel-picker .wheel-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .wheel-picker {
+    height: 150px !important;
+  }
+  
+  .wheel-picker .wheel-item {
+    height: 30px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* Animation for smooth transitions */
+.wheel-picker .wheel-item {
+  transition: all 0.2s ease;
+}
+
+/* Fade overlays for iOS effect */
+.wheel-picker::before,
+.wheel-picker::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.wheel-picker::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%);
+}
+
+.wheel-picker::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%);
+}
+
+/* Dark mode fade overlays */
+@media (prefers-color-scheme: dark) {
+  .wheel-picker::before {
+    background: linear-gradient(to bottom, rgba(31,41,55,1) 0%, rgba(31,41,55,0.8) 50%, rgba(31,41,55,0) 100%);
+  }
+  
+  .wheel-picker::after {
+    background: linear-gradient(to top, rgba(31,41,55,1) 0%, rgba(31,41,55,0.8) 50%, rgba(31,41,55,0) 100%);
+  }
+}

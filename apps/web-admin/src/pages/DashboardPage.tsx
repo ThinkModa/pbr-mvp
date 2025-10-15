@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Speaker, CreateSpeakerData, UpdateSpeakerData, SpeakersService } from '../services/speakersService';
 import { Organization, CreateOrganizationData, UpdateOrganizationData, OrganizationsService } from '../services/organizationsService';
 import { EventsService, EventWithActivities } from '../services/eventsService';
-import { supabase } from '../lib/supabase';
+// import { supabase } from '../lib/supabase'; // Unused
 import SpeakerCard from '../components/SpeakerCard';
 import SpeakerListCard from '../components/SpeakerListCard';
 import SpeakerForm from '../components/SpeakerForm';
@@ -11,11 +11,12 @@ import OrganizationListCard from '../components/OrganizationListCard';
 import OrganizationForm from '../components/OrganizationForm';
 import ConsistentNavigation from '../components/ConsistentNavigation';
 import LocationPicker from '../components/LocationPicker';
+import TimePicker from '../components/TimePicker';
 import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
 import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
 import ManualUserCreation from '../components/ManualUserCreation';
-import { UserRoleManagement } from '../components/UserRoleManagement';
+// import { UserRoleManagement } from '../components/UserRoleManagement'; // Unused
 
 // Activity categories with colors and icons
 const ACTIVITY_CATEGORIES = [
@@ -29,32 +30,7 @@ const ACTIVITY_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
 ];
 
-// Generate time options in 15-minute increments with 12-hour format (8am to 9pm only)
-const generateTimeOptions = () => {
-  const times = [];
-  for (let hour = 8; hour <= 21; hour++) { // 8am to 9pm (21:00)
-    for (let minute = 0; minute < 60; minute += 15) {
-      const date = new Date();
-      date.setHours(hour, minute, 0, 0);
-      
-      const time12Hour = date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-      
-      const time24Hour = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      
-      times.push({
-        label: time12Hour,
-        value: time24Hour
-      });
-    }
-  }
-  return times;
-};
-
-const TIME_OPTIONS = generateTimeOptions();
+// Note: TIME_OPTIONS removed - now using DateTimeWheelPicker components
 
 interface Activity {
   name: string;
@@ -63,7 +39,12 @@ interface Activity {
   startTime: string;
   endDate: string;
   endTime: string;
-  location: string;
+  location: {
+    name: string;
+    address?: string;
+    coordinates?: { lat: number; lng: number; };
+    placeId?: string;
+  } | string; // Allow string for backward compatibility during edit
   category: string;
   capacity?: number;
   isRequired: boolean;
@@ -105,7 +86,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [selectedEventForTracks, setSelectedEventForTracks] = useState<EventWithActivities | null>(null);
   // Users state
   const [users, setUsers] = useState<any[]>([]);
-  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  // const [pendingUsers, // setPendingUsers] = useState<any[]>([]); // Unused
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [usersView, setUsersView] = useState<'list' | 'bulk-import' | 'role-management'>('list');
@@ -148,14 +129,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   });
 
   // Image upload state
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  // const [imageFile, // setImageFile] = useState<File | null>(null); // Unused
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [eventSpeakers, setEventSpeakers] = useState<string[]>([]);
-  const [eventBusinesses, setEventBusinesses] = useState<string[]>([]);
+  // const [eventSpeakers, // setEventSpeakers] = useState<string[]>([]); // Unused
+  // const [eventBusinesses, // setEventBusinesses] = useState<string[]>([]); // Unused
 
   // Load speakers when speakers view is selected
   useEffect(() => {
@@ -350,10 +331,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const now = new Date();
       const upcoming = eventsData
         .filter(event => {
-          const eventDate = new Date(event.start_date);
+          const eventDate = new Date(event.start_date || '');
           return eventDate > now;
         })
-        .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime())
+        .sort((a, b) => new Date(a.start_date || '').getTime() - new Date(b.start_date || '').getTime())
         .slice(0, 3);
       
       setUpcomingEvents(upcoming);
@@ -438,23 +419,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     setEditingEvent(event);
     
     // Parse datetime strings into separate date and time
-    const startDateTime = new Date(event.start_time);
-    const endDateTime = new Date(event.end_time);
+    const startDateTime = new Date(event.start_date || '');
+    const endDateTime = new Date(event.end_date || '');
     
     setEventFormData({
-      name: event.title,
+      name: event.name || '',
       description: event.description,
       startDate: startDateTime.toISOString().split('T')[0],
       startTime: startDateTime.toTimeString().slice(0, 5),
       endDate: endDateTime.toISOString().split('T')[0],
       endTime: endDateTime.toTimeString().slice(0, 5),
-      location: event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
+      location: typeof event.location === 'string' 
+        ? { name: event.location, address: event.location, coordinates: undefined, placeId: undefined }
+        : event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
       capacity: event.max_capacity?.toString() || '',
       price: event.price ? (event.price / 100).toString() : '',
-      showCapacity: event.show_capacity,
-      showPrice: event.show_price,
-      showAttendeeCount: event.show_attendee_count,
-      hasTracks: event.has_tracks,
+      showCapacity: event.show_capacity ?? true,
+      showPrice: event.show_price ?? true,
+      showAttendeeCount: event.show_attendee_count ?? true,
+      hasTracks: event.has_tracks ?? false,
       coverImageUrl: event.cover_image_url || '',
       status: (event as any).status || 'published',
     });
@@ -482,8 +465,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         isRequired: activity.is_required
       };
     }));
-    setEventSpeakers([]);
-    setEventBusinesses([]);
+    // setEventSpeakers([]);
+    // setEventBusinesses([]);
     setShowCreateEventForm(true);
   };
 
@@ -512,9 +495,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       status: 'published',
     });
     setActivities([]);
-    setEventSpeakers([]);
-    setEventBusinesses([]);
-    setImageFile(null);
+    // setEventSpeakers([]);
+    // setEventBusinesses([]);
+    // setImageFile(null);
     setImagePreview('');
   };
 
@@ -553,6 +536,28 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
           })),
       };
 
+      // 🔍 DEBUG: Log complete event data being sent
+      console.log('📤 DashboardPage: Complete event data being sent:', {
+        eventData,
+        locationDetails: {
+          location: eventData.location,
+          hasCoordinates: !!eventData.location?.coordinates,
+          latitude: eventData.location?.coordinates?.lat,
+          longitude: eventData.location?.coordinates?.lng,
+          address: eventData.location?.address,
+          name: eventData.location?.name,
+          placeId: eventData.location?.placeId
+        },
+        activitiesCount: eventData.activities?.length || 0,
+        activitiesWithLocations: eventData.activities?.map(activity => ({
+          name: activity.name,
+          location: activity.location,
+          hasCoordinates: !!(typeof activity.location === 'object' && activity.location?.coordinates),
+          latitude: typeof activity.location === 'object' ? activity.location?.coordinates?.lat : undefined,
+          longitude: typeof activity.location === 'object' ? activity.location?.coordinates?.lng : undefined
+        })) || []
+      });
+
       if (editingEvent) {
         await handleUpdateEvent(editingEvent.id, eventData);
       } else {
@@ -577,7 +582,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       return;
     }
 
-    setImageFile(file);
+    // setImageFile(file);
     
     // Create preview URL
     const previewUrl = URL.createObjectURL(file);
@@ -588,7 +593,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     try {
       const imageUrl = await ImageUploadService.uploadImage(file, 'events');
       setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
-      setImageFile(null);
+      // setImageFile(null);
       setImagePreview('');
       
       // Clear the file input
@@ -606,27 +611,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   };
 
   const handleRemoveImage = () => {
-    setImageFile(null);
+    // setImageFile(null);
     setImagePreview('');
     setEventFormData(prev => ({ ...prev, coverImageUrl: '' }));
   };
 
-  const handleUploadImage = async () => {
-    if (!imageFile) return;
-
-    try {
-      setUploadingImage(true);
-      const imageUrl = await ImageUploadService.uploadImage(imageFile);
-      setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
-      setImageFile(null);
-      setImagePreview('');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      setEventsError('Failed to upload image');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
+  // const handleUploadImage = async () => { // Unused function
+  //   if (!imageFile) return;
+  //   // ... function body removed
+  // };
 
   const addActivity = () => {
     setActivities([...activities, {
@@ -716,7 +709,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       console.log('🔄 Refreshing pending users list...');
       const pending = await BulkImportService.getPendingUsers();
       console.log('👥 Retrieved pending users:', pending.length);
-      setPendingUsers(pending);
+      // setPendingUsers(pending);
     } catch (err) {
       console.error('❌ Import failed:', err);
       setImportError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -725,22 +718,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     }
   };
 
-  const handleSendInvitations = async (userIds: string[]) => {
-    setImportLoading(true);
-    setImportError('');
-    
-    try {
-      await BulkImportService.sendInvitations(userIds);
-      
-      // Refresh pending users list
-      const pending = await BulkImportService.getPendingUsers();
-      setPendingUsers(pending);
-    } catch (err) {
-      setImportError(`Failed to send invitations: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setImportLoading(false);
-    }
-  };
+  // const handleSendInvitations = async (userIds: string[]) => { // Unused function
+  //   setImportLoading(true);
+  //   setImportError('');
+  //   // ... function body removed
+  // };
 
   const resetImport = () => {
     setImportStep('upload');
@@ -846,7 +828,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     e.currentTarget.style.color = '#6b7280';
                   }}
                 >
-                  {event.title}
+                  {event.name || 'Untitled Event'}
                 </div>
               ))
             )}
@@ -1298,7 +1280,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     }}>
                       <SpeakerForm
                         speaker={editingSpeaker || undefined}
-                        onSubmit={editingSpeaker ? handleUpdateSpeaker : handleCreateSpeaker}
+                        onSubmit={editingSpeaker ? handleUpdateSpeaker as any : handleCreateSpeaker as any}
                         onCancel={handleCancelSpeakerForm}
                         isLoading={speakerFormLoading}
                       />
@@ -1665,7 +1647,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     }}>
                       <OrganizationForm
                         organization={editingOrganization || undefined}
-                        onSubmit={editingOrganization ? handleUpdateOrganization : handleCreateOrganization}
+                        onSubmit={editingOrganization ? handleUpdateOrganization as any : handleCreateOrganization as any}
                         onCancel={handleCancelOrganizationForm}
                         isLoading={organizationFormLoading}
                       />
@@ -2380,14 +2362,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                             <div style={{ flex: 1 }}>
                               <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
-                                {event.title}
+                                {event.name || 'Untitled Event'}
                               </h3>
                               <p style={{ color: '#6B7280', marginBottom: '12px' }}>
                                 {event.description}
                               </p>
                               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280', flexWrap: 'wrap' }}>
-                                <span>📅 {new Date(event.start_time).toLocaleDateString()}</span>
-                                <span>📍 {event.location?.name || 'Location TBD'}</span>
+                                <span>📅 {new Date(event.start_date || '').toLocaleDateString()}</span>
+                                <span>📍 {typeof event.location === 'string' ? event.location : (event.location as any)?.name || 'Location TBD'}</span>
                                 {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
                                 {event.price && <span>💰 ${event.price / 100}</span>}
                                 {event.has_tracks && (
@@ -2525,29 +2507,83 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
             width: '90%',
             maxWidth: '800px',
             maxHeight: '90vh',
-            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
           }}>
-            <div style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>
+            {/* Sticky Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #E5E7EB',
+              backgroundColor: 'white',
+              borderRadius: '12px 12px 0 0',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: 0 }}>
                   {editingEvent ? 'Edit Event' : 'Create Event'}
                 </h2>
-                <button
-                  onClick={handleCancelEventForm}
-                  style={{
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    fontSize: '24px',
-                    cursor: 'pointer',
-                    color: '#6B7280'
-                  }}
-                >
-                  ×
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    onClick={handleCancelEventForm}
+                    style={{
+                      backgroundColor: '#F3F4F6',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form="event-form"
+                    disabled={eventsLoading}
+                    style={{
+                      backgroundColor: eventsLoading ? '#9CA3AF' : '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: eventsLoading ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {editingEvent ? 'Update Event' : 'Create Event'}
+                  </button>
+                  <button
+                    onClick={handleCancelEventForm}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      fontSize: '24px',
+                      cursor: 'pointer',
+                      color: '#6B7280',
+                      padding: '4px',
+                      marginLeft: '8px'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
+            </div>
 
-              <form onSubmit={handleEventSubmit}>
+            {/* Scrollable Content */}
+            <div style={{ 
+              padding: '24px',
+              overflowY: 'auto',
+              flex: 1
+            }}>
+
+              <form id="event-form" onSubmit={handleEventSubmit}>
                 <div style={{ display: 'grid', gap: '24px' }}>
                   {/* Event Cover Image */}
                   <div>
@@ -2660,84 +2696,64 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
                   {/* Date and Time */}
                   {/* Start Date & Time */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                      Start Date & Time *
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <input
-                        type="date"
-                        value={eventFormData.startDate}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                        required={!editingEvent}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
-                        }}
-                      />
-                      <select
-                        value={eventFormData.startTime}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                        required={!editingEvent}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
-                        }}
-                      >
-                        <option value="">Select start time</option>
-                        {TIME_OPTIONS.map(time => (
-                          <option key={time.value} value={time.value}>
-                            {time.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                 <div>
+                   <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                     Start Date & Time *
+                   </label>
+                   <div style={{ display: 'flex', gap: '12px' }}>
+                     <input
+                       type="date"
+                       value={eventFormData.startDate}
+                       onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                       style={{
+                         flex: 1,
+                         padding: '8px 12px',
+                         border: '1px solid #D1D5DB',
+                         borderRadius: '6px',
+                         fontSize: '14px',
+                         minWidth: '150px'
+                       }}
+                     />
+                     <TimePicker
+                       value={eventFormData.startTime}
+                       onChange={(time) => setEventFormData(prev => ({ ...prev, startTime: time }))}
+                       placeholder="Select start time"
+                       style={{
+                         flex: 1,
+                         minWidth: '150px'
+                       }}
+                     />
+                   </div>
+                 </div>
 
                   {/* End Date & Time */}
                   <div>
                     <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
                       End Date & Time *
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
                       <input
                         type="date"
                         value={eventFormData.endDate}
                         onChange={(e) => setEventFormData(prev => ({ ...prev, endDate: e.target.value }))}
-                        required={!editingEvent}
                         style={{
-                          width: '100%',
-                          padding: '12px',
+                          flex: 1,
+                          padding: '8px 12px',
                           border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          minWidth: '150px'
                         }}
                       />
-                      <select
+                      <TimePicker
                         value={eventFormData.endTime}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                        required={!editingEvent}
+                        onChange={(time) => setEventFormData(prev => ({ ...prev, endTime: time }))}
+                        placeholder="Select end time"
                         style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
+                          flex: 1,
+                          minWidth: '150px'
                         }}
-                      >
-                        <option value="">Select end time</option>
-                        {TIME_OPTIONS.map(time => (
-                          <option key={time.value} value={time.value}>
-                            {time.label}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   </div>
 
@@ -2748,7 +2764,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     </label>
                     <LocationPicker
                       value={eventFormData.location}
-                      onChange={(location) => setEventFormData(prev => ({ ...prev, location }))}
+                      onChange={(location) => setEventFormData(prev => ({ ...prev, location: location as any }))}
                       placeholder="Search for a location..."
                     />
                   </div>
@@ -3018,37 +3034,30 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
                               Start Date & Time *
                             </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px' }}>
                               <input
                                 type="date"
                                 value={activity.startDate}
                                 onChange={(e) => updateActivity(index, 'startDate', e.target.value)}
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
+                                  flex: 1,
+                                  padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  minWidth: '120px'
                                 }}
                               />
-                              <select
+                              <TimePicker
                                 value={activity.startTime}
-                                onChange={(e) => updateActivity(index, 'startTime', e.target.value)}
+                                onChange={(time) => updateActivity(index, 'startTime', time)}
+                                placeholder="Start time"
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  flex: 1,
+                                  fontSize: '12px',
+                                  minWidth: '120px'
                                 }}
-                              >
-                                <option value="">Start time</option>
-                                {TIME_OPTIONS.map(time => (
-                                  <option key={time.value} value={time.value}>
-                                    {time.label}
-                                  </option>
-                                ))}
-                              </select>
+                              />
                             </div>
                           </div>
 
@@ -3057,51 +3066,38 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
                               End Date & Time *
                             </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px' }}>
                               <input
                                 type="date"
                                 value={activity.endDate}
                                 onChange={(e) => updateActivity(index, 'endDate', e.target.value)}
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
+                                  flex: 1,
+                                  padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  minWidth: '120px'
                                 }}
                               />
-                              <select
+                              <TimePicker
                                 value={activity.endTime}
-                                onChange={(e) => updateActivity(index, 'endTime', e.target.value)}
+                                onChange={(time) => updateActivity(index, 'endTime', time)}
+                                placeholder="End time"
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  flex: 1,
+                                  fontSize: '12px',
+                                  minWidth: '120px'
                                 }}
-                              >
-                                <option value="">End time</option>
-                                {TIME_OPTIONS.map(time => (
-                                  <option key={time.value} value={time.value}>
-                                    {time.label}
-                                  </option>
-                                ))}
-                              </select>
+                              />
                             </div>
                           </div>
-                          <input
-                            type="text"
-                            placeholder="Location"
-                            value={activity.location}
-                            onChange={(e) => updateActivity(index, 'location', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px',
-                              border: '1px solid #D1D5DB',
-                              borderRadius: '6px',
-                              fontSize: '14px'
-                            }}
+                          <LocationPicker
+                            value={typeof activity.location === 'string' 
+                              ? { name: activity.location, address: activity.location } 
+                              : activity.location as any}
+                            onChange={(location: any) => updateActivity(index, 'location', location)}
+                            placeholder="Search for activity location..."
                           />
                           <select
                             value={activity.category}
@@ -3152,41 +3148,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                   </div>
                 </div>
 
-                {/* Form Actions */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
-                  <button
-                    type="button"
-                    onClick={handleCancelEventForm}
-                    style={{
-                      backgroundColor: '#F3F4F6',
-                      color: '#374151',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px 24px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={eventsLoading}
-                    style={{
-                      backgroundColor: eventsLoading ? '#9CA3AF' : '#3B82F6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px 24px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: eventsLoading ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {editingEvent ? 'Update Event' : 'Create Event'}
-                  </button>
-                </div>
               </form>
             </div>
           </div>
