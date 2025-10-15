@@ -4,11 +4,27 @@
     "slug": "pbr-mvp",
     "owner": "thinkmodalabs",
     "version": "1.0.0",
+    "scheme": "com.thinkmodalabs.pbr-mvp",
     "assetBundlePatterns": [
       "**/*"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "ios": {
+      "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "GoogleSignIn",
+            "CFBundleURLSchemes": ["com.thinkmodalabs.pbr-mvp"]
+          },
+          {
+            "CFBundleURLName": "AppleSignIn",
+            "CFBundleURLSchemes": ["com.thinkmodalabs.pbr-mvp"]
+          }
+        ]
+      }
     },
     "sdkVersion": "54.0.0",
     "extra": {

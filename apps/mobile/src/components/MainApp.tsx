@@ -17,7 +17,7 @@ import {
   Platform,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-// import MapLink from 'react-native-map-link';
+import { showLocation } from 'react-native-map-link';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { supabase } from '../lib/supabase';
@@ -453,12 +453,39 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   const handleMapPress = async (event: EventWithActivities) => {
     console.log('🗺️ Map pressed for event:', event.title);
     
-    // Temporarily show alert instead of opening map
-    Alert.alert(
-      'Map Interaction',
-      `Map pressed for: ${event.title}\nCoordinates: ${event.latitude}, ${event.longitude}\nAddress: ${event.location_address || 'None'}`,
-      [{ text: 'OK' }]
-    );
+    try {
+      // Check if we have coordinates
+      if (event.latitude && event.longitude) {
+        console.log('📍 Opening map with coordinates:', event.latitude, event.longitude);
+        await showLocation({
+          latitude: Number(event.latitude),
+          longitude: Number(event.longitude),
+          title: event.title,
+          sourceLatitude: undefined, // Optional: current location
+          sourceLongitude: undefined,
+        });
+      } else if (event.location_address) {
+        console.log('📍 Opening map with address:', event.location_address);
+        await showLocation({
+          address: event.location_address,
+          title: event.title,
+        });
+      } else {
+        console.log('📍 No location data available');
+        Alert.alert(
+          'Location Not Available',
+          'Location details are not available for this event.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error opening map:', error);
+      Alert.alert(
+        'Error',
+        'Unable to open map. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const toggleMyEvents = () => {
@@ -603,7 +630,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>events</Text>
+          <Text style={styles.headerTitle}>Events</Text>
                 <View style={[styles.dataSourceIndicator, { backgroundColor: '#10B981' }]}>
                   <Text style={styles.dataSourceText}>
                     LIVE
@@ -4274,7 +4301,7 @@ const MainApp: React.FC = () => {
             onPress={() => setCurrentScreen('events')}
           >
             <Text style={styles.navIcon}>📅</Text>
-            <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>events</Text>
+            <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>Events</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
