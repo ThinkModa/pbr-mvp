@@ -16,6 +16,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
+// import MapLink from 'react-native-map-link';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { supabase } from '../lib/supabase';
@@ -446,6 +448,17 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     console.log('Organization pressed:', organization);
     setSelectedOrganization(organization.organization);
     setOrganizationModalVisible(true);
+  };
+
+  const handleMapPress = async (event: EventWithActivities) => {
+    console.log('🗺️ Map pressed for event:', event.title);
+    
+    // Temporarily show alert instead of opening map
+    Alert.alert(
+      'Map Interaction',
+      `Map pressed for: ${event.title}\nCoordinates: ${event.latitude}, ${event.longitude}\nAddress: ${event.location_address || 'None'}`,
+      [{ text: 'OK' }]
+    );
   };
 
   const toggleMyEvents = () => {
@@ -1304,22 +1317,61 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
 
                 {/* Map Section */}
                 <View style={{ padding: 20, paddingTop: 0 }}>
-                  <View style={{ backgroundColor: '#F3F4F6', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
-                    <View style={{ 
-                      height: 150, 
-                      justifyContent: 'center', 
-                      alignItems: 'center',
-                      backgroundColor: '#E5E7EB'
-                    }}>
-                      <Text style={{ fontSize: 48, marginBottom: 10 }}>🗺️</Text>
-                      <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
-                        Map view coming soon
-                      </Text>
-                      <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 5, paddingHorizontal: 20 }}>
-                        {selectedEvent.location?.name || selectedEvent.location_address || 'Location details will be displayed here'}
-                      </Text>
-                    </View>
-                  </View>
+                  <TouchableOpacity 
+                    onPress={() => handleMapPress(selectedEvent)}
+                    style={{ backgroundColor: '#F3F4F6', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}
+                    activeOpacity={0.8}
+                  >
+                    {selectedEvent.latitude && selectedEvent.longitude ? (
+                      // Real Map View
+                      <MapView
+                        style={{ height: 150, width: '100%' }}
+                        initialRegion={{
+                          latitude: Number(selectedEvent.latitude),
+                          longitude: Number(selectedEvent.longitude),
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }}
+                        scrollEnabled={false}
+                        zoomEnabled={false}
+                        pitchEnabled={false}
+                        rotateEnabled={false}
+                        showsUserLocation={false}
+                        showsMyLocationButton={false}
+                        showsCompass={false}
+                        showsScale={false}
+                        showsBuildings={false}
+                        showsTraffic={false}
+                        showsIndoors={false}
+                        showsPointsOfInterest={false}
+                      >
+                        <Marker
+                          coordinate={{
+                            latitude: Number(selectedEvent.latitude),
+                            longitude: Number(selectedEvent.longitude),
+                          }}
+                          title={selectedEvent.title}
+                          description={selectedEvent.location_address || selectedEvent.location?.name}
+                        />
+                      </MapView>
+                    ) : (
+                      // Placeholder View
+                      <View style={{ 
+                        height: 150, 
+                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        backgroundColor: '#E5E7EB'
+                      }}>
+                        <Text style={{ fontSize: 48, marginBottom: 10 }}>🗺️</Text>
+                        <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
+                          {selectedEvent.location_address ? 'Tap to open in Maps' : 'Map view coming soon'}
+                        </Text>
+                        <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 5, paddingHorizontal: 20 }}>
+                          {selectedEvent.location?.name || selectedEvent.location_address || 'Location details will be displayed here'}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             ) : modalView === 'activity' && selectedActivity ? (
