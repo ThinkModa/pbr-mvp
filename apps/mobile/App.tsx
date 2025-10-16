@@ -13,7 +13,7 @@ import {
   AppRegistry,
   FlatList,
 } from 'react-native';
-import { AuthProvider, useAuth } from './src/contexts/EnhancedAuthContext';
+import { AuthProvider, useAuth } from './src/contexts/SupabaseAuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import MainApp from './src/components/MainApp';
 
