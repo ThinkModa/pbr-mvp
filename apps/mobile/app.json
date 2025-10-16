@@ -2,30 +2,39 @@
   "expo": {
     "name": "PBR MVP",
     "slug": "pbr-mvp",
+    "owner": "thinkmodalabs",
     "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "scheme": "com.thinkmodalabs.pbr-mvp",
     "assetBundlePatterns": [
       "**/*"
     ],
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
-    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "sdkVersion": "54.0.0"
+    "ios": {
+      "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "GoogleSignIn",
+            "CFBundleURLSchemes": ["com.thinkmodalabs.pbr-mvp"]
+          },
+          {
+            "CFBundleURLName": "AppleSignIn",
+            "CFBundleURLSchemes": ["com.thinkmodalabs.pbr-mvp"]
+          }
+        ]
+      }
+    },
+    "sdkVersion": "54.0.0",
+    "extra": {
+      "eas": {
+        "projectId": "b7bbb674-9236-46b7-b271-a12902508678"
+      }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/b7bbb674-9236-46b7-b271-a12902508678"
+    }
   }
 }

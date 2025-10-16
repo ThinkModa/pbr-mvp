@@ -16,11 +16,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-// import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
-import { useAuth } from '../contexts/EnhancedAuthContext';
+import MapView, { Marker } from 'react-native-maps';
+import { showLocation } from 'react-native-map-link';
+import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../contexts/SupabaseAuthContext';
+import { supabase } from '../lib/supabase';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
-import { SpeakersService, EventSpeaker } from '../services/speakersService';
+import { SpeakersService, EventSpeaker, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
@@ -55,7 +58,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   
   // Speaker state management
   const [eventSpeakers, setEventSpeakers] = useState<EventSpeaker[]>([]);
-  const [activitySpeakers, setActivitySpeakers] = useState<EventSpeaker[]>([]);
+  const [activitySpeakers, setActivitySpeakers] = useState<ActivitySpeaker[]>([]);
   const [selectedSpeaker, setSelectedSpeaker] = useState<any>(null);
   const [speakerModalVisible, setSpeakerModalVisible] = useState(false);
   
@@ -445,6 +448,44 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     console.log('Organization pressed:', organization);
     setSelectedOrganization(organization.organization);
     setOrganizationModalVisible(true);
+  };
+
+  const handleMapPress = async (event: EventWithActivities) => {
+    console.log('🗺️ Map pressed for event:', event.title);
+    
+    try {
+      // Check if we have coordinates
+      if (event.latitude && event.longitude) {
+        console.log('📍 Opening map with coordinates:', event.latitude, event.longitude);
+        await showLocation({
+          latitude: Number(event.latitude),
+          longitude: Number(event.longitude),
+          title: event.title,
+          sourceLatitude: undefined, // Optional: current location
+          sourceLongitude: undefined,
+        });
+      } else if (event.location_address) {
+        console.log('📍 Opening map with address:', event.location_address);
+        await showLocation({
+          address: event.location_address,
+          title: event.title,
+        });
+      } else {
+        console.log('📍 No location data available');
+        Alert.alert(
+          'Location Not Available',
+          'Location details are not available for this event.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error opening map:', error);
+      Alert.alert(
+        'Error',
+        'Unable to open map. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const toggleMyEvents = () => {
@@ -1300,6 +1341,65 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     );
                   })()}
                 </View>
+
+                {/* Map Section */}
+                <View style={{ padding: 20, paddingTop: 0 }}>
+                  <TouchableOpacity 
+                    onPress={() => handleMapPress(selectedEvent)}
+                    style={{ backgroundColor: '#F3F4F6', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}
+                    activeOpacity={0.8}
+                  >
+                    {selectedEvent.latitude && selectedEvent.longitude ? (
+                      // Real Map View
+                      <MapView
+                        style={{ height: 150, width: '100%' }}
+                        initialRegion={{
+                          latitude: Number(selectedEvent.latitude),
+                          longitude: Number(selectedEvent.longitude),
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }}
+                        scrollEnabled={false}
+                        zoomEnabled={false}
+                        pitchEnabled={false}
+                        rotateEnabled={false}
+                        showsUserLocation={false}
+                        showsMyLocationButton={false}
+                        showsCompass={false}
+                        showsScale={false}
+                        showsBuildings={false}
+                        showsTraffic={false}
+                        showsIndoors={false}
+                        showsPointsOfInterest={false}
+                      >
+                        <Marker
+                          coordinate={{
+                            latitude: Number(selectedEvent.latitude),
+                            longitude: Number(selectedEvent.longitude),
+                          }}
+                          title={selectedEvent.title}
+                          description={selectedEvent.location_address || selectedEvent.location?.name}
+                        />
+                      </MapView>
+                    ) : (
+                      // Placeholder View
+                      <View style={{ 
+                        height: 150, 
+                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        backgroundColor: '#E5E7EB'
+                      }}>
+                        <Text style={{ fontSize: 48, marginBottom: 10 }}>🗺️</Text>
+                        <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
+                          {selectedEvent.location_address ? 'Tap to open in Maps' : 'Map view coming soon'}
+                        </Text>
+                        <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 5, paddingHorizontal: 20 }}>
+                          {selectedEvent.location?.name || selectedEvent.location_address || 'Location details will be displayed here'}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : modalView === 'activity' && selectedActivity ? (
               <View>
@@ -2054,13 +2154,120 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - expo-image-picker requires native compilation
-    Alert.alert(
-      'Image Upload Coming Soon', 
-      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
-      [{ text: 'OK' }]
-    );
-    console.log('Image upload temporarily disabled - requires native compilation');
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Select Profile Picture',
+        'Choose how you want to add a profile picture',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Photo Library', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please grant permission to access your camera to take a photo.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        await uploadProfileImage(asset.uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      if (!user) {
+        Alert.alert('Error', 'User not found. Please try again.');
+        return;
+      }
+
+      // Create a unique filename
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      // Create FormData for React Native
+      const formData = new FormData();
+      formData.append('file', {
+        uri: imageUri,
+        type: `image/${fileExt}`,
+        name: fileName,
+      } as any);
+
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, formData, {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Error uploading image:', error);
+        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update user profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Update Failed', 'Failed to update profile. Please try again.');
+        return;
+      }
+
+      // Update local profile state
+      setProfile((prev: any) => prev ? { ...prev, avatarUrl: publicUrl } : null);
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+    }
   };
 
   if (loading) {
@@ -2377,13 +2584,101 @@ const ProfileEditModal: React.FC<{
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - expo-image-picker requires native compilation
-    Alert.alert(
-      'Image Upload Coming Soon', 
-      'Image upload functionality will be available in the next app build. For now, you can still edit all other profile information!',
-      [{ text: 'OK' }]
-    );
-    console.log('Image upload temporarily disabled - requires native compilation');
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
+        return;
+      }
+      // Show action sheet
+      Alert.alert(
+        'Select Profile Picture',
+        'Choose how you want to add a profile picture',
+        [
+          { text: 'Camera', onPress: () => openImagePicker('camera') },
+          { text: 'Photo Library', onPress: () => openImagePicker('library') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+    }
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfileImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      // Create unique filename
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${formData.id}-${Date.now()}.${fileExt}`;
+      
+      // Create FormData for React Native
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', {
+        uri: imageUri,
+        type: `image/${fileExt}`,
+        name: fileName,
+      } as any);
+      
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(`avatars/${fileName}`, formDataUpload, {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Upload error:', error);
+        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(`avatars/${fileName}`);
+
+      // Update user profile with new avatar URL in database
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', formData.id);
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError);
+        Alert.alert('Update Failed', 'Failed to update profile. Please try again.');
+        return;
+      }
+
+      // Update local form data with new image URL
+      const updatedFormData = { ...formData, avatarUrl: publicUrl };
+      setFormData(updatedFormData);
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
+    }
   };
 
   const tShirtSizes = ['XS', 'S', 'M', 'L', '2XL', '3XL', '4XL'];
@@ -2744,7 +3039,7 @@ const InterestsSelectionModal: React.FC<{
 // Chat Screen
 const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct'>('notifications');
+  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
   const [groupFilter, setGroupFilter] = useState<'events' | 'users'>('events');
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2828,7 +3123,14 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     if (activeTab === 'notifications' && thread.event) {
       return thread.event.title;
     } else if (activeTab === 'direct' && thread.otherUser) {
-      return thread.otherUser.name;
+      // Use name if available, otherwise construct from first_name and last_name
+      if (thread.otherUser.name) {
+        return thread.otherUser.name;
+      } else if (thread.otherUser.first_name || thread.otherUser.last_name) {
+        return `${thread.otherUser.first_name || ''} ${thread.otherUser.last_name || ''}`.trim();
+      } else {
+        return thread.otherUser.email;
+      }
     } else if (thread.name) {
       return thread.name;
     }
@@ -2891,21 +3193,15 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     setLoadingUsers(true);
     try {
       // Fetch all users except the current user
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id,name,email,avatar_url')
+        .neq('id', user?.id || '');
       
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/users?select=id,name,email,avatar_url&id=neq.${user?.id}`, {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      });
-      
-      if (response.ok) {
-        const users = await response.json();
+      if (!error && users) {
         setAvailableUsers(users);
       } else {
-        console.error('Failed to load users:', response.statusText);
+        console.error('Failed to load users:', error);
         setAvailableUsers([]);
       }
     } catch (error) {
@@ -3210,9 +3506,6 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity style={styles.newMessageButton}>
-          <Text style={styles.newMessageButtonText}>+</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Chat Tabs */}
@@ -3407,9 +3700,24 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
           ) : (
             <>
               <View style={styles.userSelectionHeader}>
-                <Text style={styles.userSelectionTitle}>Name Chat</Text>
                 <TouchableOpacity onPress={handleCancelNameChat}>
                   <Text style={styles.userSelectionCancelButton}>Back</Text>
+                </TouchableOpacity>
+                <Text style={styles.userSelectionTitle}>Name Chat</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.startChatButtonHeader,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonDisabled
+                  ]}
+                  onPress={handleCreateGroupChat}
+                  disabled={!chatName.trim() || creatingThread}
+                >
+                  <Text style={[
+                    styles.startChatButtonText,
+                    (!chatName.trim() || creatingThread) && styles.startChatButtonTextDisabled
+                  ]}>
+                    {creatingThread ? 'Creating...' : 'Start'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -3432,23 +3740,6 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
                 </Text>
               </View>
 
-              <View style={styles.userSelectionFooter}>
-                <TouchableOpacity
-                  style={[
-                    styles.startChatButton,
-                    (!chatName.trim() || creatingThread) && styles.startChatButtonDisabled
-                  ]}
-                  onPress={handleCreateGroupChat}
-                  disabled={!chatName.trim() || creatingThread}
-                >
-                  <Text style={[
-                    styles.startChatButtonText,
-                    (!chatName.trim() || creatingThread) && styles.startChatButtonTextDisabled
-                  ]}>
-                    {creatingThread ? 'Creating...' : 'Start Group Chat'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </>
           )}
         </SafeAreaView>
@@ -3540,7 +3831,28 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
 
     // Subscribe to new messages
     const unsubscribeMessages = RealTimeService.subscribeToMessages(threadId, (newMessage) => {
-      setMessages(prev => [...prev, newMessage]);
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => msg.id === newMessage.id);
+        if (messageExists) {
+          return prev;
+        }
+        // Convert RealtimeMessage to ChatMessage format
+        const chatMessage: ChatMessage = {
+          ...newMessage,
+          replyToId: null,
+          eventId: null,
+          attachments: [],
+          isEdited: false,
+          editedAt: null,
+          isDeleted: false,
+          deletedAt: null,
+          reactions: {},
+          updatedAt: newMessage.createdAt,
+          user: newMessage.user || { id: newMessage.userId, name: 'Unknown', email: '', profile_image_url: null }
+        };
+        return [...prev, chatMessage];
+      });
       
       // Mark as read if user is viewing the thread
       ChatService.markMessagesAsRead(threadId, user.id);
@@ -3563,7 +3875,14 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     try {
       setSending(true);
       const message = await ChatService.sendMessage(threadId, user.id, newMessage.trim());
-      setMessages(prev => [...prev, message]);
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => msg.id === message.id);
+        if (messageExists) {
+          return prev;
+        }
+        return [...prev, message];
+      });
       setNewMessage('');
     } catch (err) {
       console.error('Error sending message:', err);
@@ -3575,7 +3894,11 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
 
   const formatTime = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
   };
 
   const getThreadTitle = (): string => {
@@ -3598,22 +3921,14 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingMembers(true);
     try {
       // Get members from chat_memberships table
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/chat_memberships?select=*,users(*)&thread_id=eq.${threadId}&is_active=eq.true`,
-        {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const { data: memberships, error } = await supabase
+        .from('chat_memberships')
+        .select('*,users(*)')
+        .eq('thread_id', threadId)
+        .eq('is_active', true);
 
-      if (response.ok) {
-        const members = await response.json();
-        setThreadMembers(members);
+      if (!error && memberships) {
+        setThreadMembers(memberships);
       }
     } catch (err) {
       console.error('Error loading thread members:', err);
@@ -3626,22 +3941,13 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     setLoadingUsersForAdd(true);
     try {
       // Get all users except current members
-      const SUPABASE_URL = 'http://192.168.1.129:54321';
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
       const currentMemberIds = threadMembers.map(member => member.user_id);
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/users?select=id,name,email&id=not.in.(${currentMemberIds.join(',')})`,
-        {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id,name,email')
+        .not('id', 'in', `(${currentMemberIds.join(',')})`);
 
-      if (response.ok) {
-        const users = await response.json();
+      if (!error && users) {
         setAvailableUsersForAdd(users);
       }
     } catch (err) {
@@ -4457,21 +4763,21 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e0e0',
     justifyContent: 'center',
   },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    marginRight: 12,
-    borderRadius: 16,
-    backgroundColor: '#f3f4f6',
-  },
+  // filterButton: { // Duplicate - removed
+  //   paddingHorizontal: 16,
+  //   paddingVertical: 6,
+  //   marginRight: 12,
+  //   borderRadius: 16,
+  //   backgroundColor: '#f3f4f6',
+  // },
   activeFilterButton: {
     backgroundColor: '#D29507',
   },
-  filterButtonText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
+  // filterButtonText: { // Duplicate - removed
+  //   fontSize: 12,
+  //   color: '#666',
+  //   fontWeight: '500',
+  // },
   activeFilterButtonText: {
     color: 'white',
   },
@@ -4752,57 +5058,7 @@ const styles = StyleSheet.create({
     color: '#D29507',
     fontWeight: 'bold',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#DC2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
+  // Duplicate styles removed - using the ones defined earlier
   activitiesSection: {
     marginTop: 12,
     padding: 12,
@@ -4966,6 +5222,13 @@ const styles = StyleSheet.create({
   startChatButtonTextDisabled: {
     color: '#9CA3AF',
   },
+  startChatButtonHeader: {
+    backgroundColor: '#D29507',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
   nameChatContent: {
     flex: 1,
     padding: 20,
@@ -5069,6 +5332,7 @@ const styles = StyleSheet.create({
   profilePointsIcon: {
     fontSize: 20,
     marginRight: 8,
+    color: '#D29507',
   },
   profilePointsText: {
     fontSize: 18,

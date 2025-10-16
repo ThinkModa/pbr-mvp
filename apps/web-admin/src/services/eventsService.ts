@@ -1,5 +1,5 @@
 import { supabase, getServiceRoleClient } from '../lib/supabase';
-import { Database } from '../../../packages/database/src/types';
+import { Database } from '../types/database';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type EventInsert = Database['public']['Tables']['events']['Insert'];
@@ -80,6 +80,13 @@ export class EventsService {
   }): Promise<EventWithActivities> {
     const serviceClient = getServiceRoleClient();
 
+    console.log('📝 Creating event with location data:', {
+      location: eventData.location,
+      coordinates: eventData.location.coordinates,
+      latitude: eventData.location.coordinates?.lat,
+      longitude: eventData.location.coordinates?.lng
+    });
+
     // Start a transaction
     const { data: event, error: eventError } = await serviceClient
       .from('events')
@@ -89,6 +96,9 @@ export class EventsService {
             start_time: eventData.start_date,
             end_time: eventData.end_date,
             location: eventData.location,
+            location_address: eventData.location.address,
+            latitude: eventData.location.coordinates?.lat,
+            longitude: eventData.location.coordinates?.lng,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
@@ -99,7 +109,7 @@ export class EventsService {
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             organization_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // PBR Community org
-            status: 'published', // Set as published by default
+            status: eventData.status || 'published',
             is_public: true, // Make events visible to mobile app
           })
       .select()
@@ -118,7 +128,18 @@ export class EventsService {
         description: activity.description,
         start_time: activity.start_time,
         end_time: activity.end_time,
-        location: { name: activity.location },
+        location: typeof activity.location === 'string' 
+          ? { name: activity.location } 
+          : activity.location,
+        location_address: typeof activity.location === 'string' 
+          ? activity.location 
+          : activity.location.address,
+        latitude: typeof activity.location === 'string' 
+          ? undefined 
+          : activity.location.coordinates?.lat,
+        longitude: typeof activity.location === 'string' 
+          ? undefined 
+          : activity.location.coordinates?.lng,
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
@@ -201,6 +222,9 @@ export class EventsService {
             start_time: eventData.start_date,
             end_time: eventData.end_date,
             location: eventData.location,
+            location_address: eventData.location.address,
+            latitude: eventData.location.coordinates?.lat,
+            longitude: eventData.location.coordinates?.lng,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
@@ -210,7 +234,7 @@ export class EventsService {
             has_tracks: eventData.has_tracks ?? false,
             cover_image_url: eventData.cover_image_url,
             slug: eventData.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-            status: 'published', // Keep as published when updating
+            status: eventData.status || 'published',
             is_public: true, // Keep events visible to mobile app
             updated_at: new Date().toISOString(),
           })
@@ -240,7 +264,18 @@ export class EventsService {
         description: activity.description,
         start_time: activity.start_time,
         end_time: activity.end_time,
-        location: { name: activity.location },
+        location: typeof activity.location === 'string' 
+          ? { name: activity.location } 
+          : activity.location,
+        location_address: typeof activity.location === 'string' 
+          ? activity.location 
+          : activity.location.address,
+        latitude: typeof activity.location === 'string' 
+          ? undefined 
+          : activity.location.coordinates?.lat,
+        longitude: typeof activity.location === 'string' 
+          ? undefined 
+          : activity.location.coordinates?.lng,
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));

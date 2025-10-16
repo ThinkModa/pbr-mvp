@@ -11,7 +11,7 @@ interface LocationData {
 }
 
 interface LocationPickerProps {
-  value: string;
+  value: string | LocationData;
   onChange: (location: LocationData) => void;
   placeholder?: string;
   required?: boolean;
@@ -33,12 +33,51 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   placeholder = "Search for a location...",
   required = false
 }) => {
-  const [inputValue, setInputValue] = useState(value);
+  // Handle both string and object values properly
+  const getInitialValue = () => {
+    console.log('🔍 LocationPicker getInitialValue called with:', { value, type: typeof value });
+    
+    if (typeof value === 'string') {
+      // Check if it's JSON string
+      if (value.startsWith('{') || value.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(value);
+          return parsed.address || parsed.name || parsed.formatted_address || '';
+        } catch (e) {
+          return value;
+        }
+      }
+      return value;
+    } else if (value && typeof value === 'object') {
+      // Extract string from object - handle both LocationData and empty object
+      if (value.address && value.address.trim() !== '') {
+        return value.address;
+      } else if (value.name && value.name.trim() !== '') {
+        return value.name;
+      } else if (value.formatted_address && value.formatted_address.trim() !== '') {
+        return value.formatted_address;
+      }
+      // If it's an empty object (like initial state), return empty string
+      return '';
+    }
+    return '';
+  };
+
+  const [inputValue, setInputValue] = useState(getInitialValue());
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
+
+  // Update input value when value prop changes (for editing existing events)
+  useEffect(() => {
+    const newValue = getInitialValue();
+    // Only update if different to avoid cursor jumping
+    if (newValue !== inputValue) {
+      setInputValue(newValue);
+    }
+  }, [value]);
 
   // Initialize Google Places API
   useEffect(() => {
@@ -79,6 +118,13 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
     autocompleteRef.current.addListener('place_changed', () => {
       const place = autocompleteRef.current.getPlace();
       
+      console.log('🗺️ Google Places result:', {
+        name: place.name,
+        formatted_address: place.formatted_address,
+        geometry: place.geometry,
+        hasCoordinates: !!place.geometry?.location
+      });
+      
       if (place.place_id) {
         const locationData: LocationData = {
           name: place.name || place.formatted_address,
@@ -89,8 +135,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           } : undefined,
           placeId: place.place_id
         };
+        
+        console.log('📍 Location data being sent:', locationData);
 
-        setInputValue(locationData.name);
+        setInputValue(locationData.address);  // FIXED: Use address not name
         onChange(locationData);
         setShowSuggestions(false);
       }
@@ -110,6 +158,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
         placeId: undefined
       });
     }
+    // Note: We don't call onChange for every keystroke to avoid creating objects
+    // onChange is only called when a place is selected from Google Places autocomplete
   };
 
   const handleInputFocus = () => {
@@ -146,8 +196,14 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
         type="text"
         value={inputValue}
         onChange={handleInputChange}
-        onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
+        onFocus={(e) => {
+          e.target.style.borderColor = '#3B82F6';
+          handleInputFocus();
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = '#d1d5db';
+          handleInputBlur();
+        }}
         placeholder={placeholder}
         required={required}
         style={{
@@ -158,12 +214,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           fontSize: '14px',
           outline: 'none',
           transition: 'border-color 0.2s ease'
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = '#3B82F6';
-        }}
-        onBlur={(e) => {
-          e.target.style.borderColor = '#d1d5db';
         }}
       />
       
