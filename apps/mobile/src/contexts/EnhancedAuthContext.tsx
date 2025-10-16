@@ -4,7 +4,7 @@ import { ConditionalRoleSubscription } from '../components/ConditionalRoleSubscr
 
 // Configuration flag to enable/disable real auth
 // Set to true to enable real Supabase auth, false for mock auth (recommended for Expo Go)
-const USE_REAL_AUTH = true; // Set to true to enable real Supabase auth
+const USE_REAL_AUTH = false; // Set to true to enable real Supabase auth
 
 // User type (compatible with both mock and real auth)
 interface User {

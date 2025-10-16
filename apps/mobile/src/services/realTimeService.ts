@@ -26,7 +26,7 @@ export type MessageCallback = (message: RealtimeMessage) => void;
 export type ThreadUpdateCallback = (update: RealtimeThreadUpdate) => void;
 
 export class RealTimeService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
+  private static readonly SUPABASE_URL = 'http://192.168.1.95:54321';
   private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
   
   private static pollingIntervals: Map<string, NodeJS.Timeout> = new Map();

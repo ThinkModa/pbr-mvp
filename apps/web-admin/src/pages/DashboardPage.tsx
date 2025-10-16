@@ -11,7 +11,6 @@ import OrganizationListCard from '../components/OrganizationListCard';
 import OrganizationForm from '../components/OrganizationForm';
 import ConsistentNavigation from '../components/ConsistentNavigation';
 import LocationPicker from '../components/LocationPicker';
-import TimePicker from '../components/TimePicker';
 import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
 import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
@@ -30,7 +29,454 @@ const ACTIVITY_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
 ];
 
-// Note: TIME_OPTIONS removed - now using DateTimeWheelPicker components
+// Time options in 30-minute increments from 8:00 AM to 9:00 PM
+const TIME_OPTIONS = [
+  '8:00 AM', '8:30 AM',
+  '9:00 AM', '9:30 AM',
+  '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM',
+  '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM',
+  '3:00 PM', '3:30 PM',
+  '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM',
+  '6:00 PM', '6:30 PM',
+  '7:00 PM', '7:30 PM',
+  '8:00 PM', '8:30 PM',
+  '9:00 PM'
+];
+
+// Helper function to convert 12-hour format to 24-hour format for database
+const convertTo24Hour = (time12Hour: string): string => {
+  if (!time12Hour) return '';
+  
+  const [time, period] = time12Hour.split(' ');
+  const [hours, minutes] = time.split(':');
+  
+  let hour24 = parseInt(hours);
+  
+  if (period === 'PM' && hour24 !== 12) {
+    hour24 += 12;
+  } else if (period === 'AM' && hour24 === 12) {
+    hour24 = 0;
+  }
+  
+  return `${hour24.toString().padStart(2, '0')}:${minutes}`;
+};
+
+// Helper function to convert 24-hour format to 12-hour format for display
+const convertTo12Hour = (time24Hour: string): string => {
+  if (!time24Hour) return '';
+  
+  const [hours, minutes] = time24Hour.split(':');
+  const hour24 = parseInt(hours);
+  
+  let hour12 = hour24;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  
+  if (hour24 === 0) {
+    hour12 = 12;
+  } else if (hour24 > 12) {
+    hour12 = hour24 - 12;
+  }
+  
+  return `${hour12}:${minutes} ${period}`;
+};
+
+// Helper function to format date in friendly format
+const formatFriendlyDate = (dateString: string): string => {
+  if (!dateString) return '';
+  
+  const date = new Date(dateString);
+  
+  // Format as "Mon, Jun 17, 2025" (abbreviated weekday, abbreviated month, day, year)
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
+// Modern Calendar Component
+const ModernCalendar: React.FC<{
+  selectedDate: string;
+  onDateSelect: (date: string) => void;
+  onClose: () => void;
+}> = ({ selectedDate, onDateSelect, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+
+  const today = new Date();
+  const selectedDateObj = selectedDate ? new Date(selectedDate) : today;
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    
+    // Add previous month's trailing days
+    const prevMonth = new Date(year, month - 1, 0);
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        date: prevMonth.getDate() - i,
+        isCurrentMonth: false,
+        isToday: false,
+        isSelected: false,
+        fullDate: new Date(year, month - 1, prevMonth.getDate() - i).toISOString().split('T')[0]
+      });
+    }
+
+    // Add current month's days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const fullDate = new Date(year, month, day).toISOString().split('T')[0];
+      days.push({
+        date: day,
+        isCurrentMonth: true,
+        isToday: fullDate === today.toISOString().split('T')[0],
+        isSelected: fullDate === selectedDate,
+        fullDate
+      });
+    }
+
+    // Add next month's leading days
+    const remainingDays = 42 - days.length; // 6 weeks * 7 days
+    for (let day = 1; day <= remainingDays; day++) {
+      days.push({
+        date: day,
+        isCurrentMonth: false,
+        isToday: false,
+        isSelected: false,
+        fullDate: new Date(year, month + 1, day).toISOString().split('T')[0]
+      });
+    }
+
+    return days;
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newMonth = new Date(prev);
+      if (direction === 'prev') {
+        newMonth.setMonth(prev.getMonth() - 1);
+      } else {
+        newMonth.setMonth(prev.getMonth() + 1);
+      }
+      return newMonth;
+    });
+  };
+
+  const formatMonthYear = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const days = getDaysInMonth(currentMonth);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '24px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        width: '90%',
+        maxWidth: '400px',
+        maxHeight: '90vh',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '20px'
+        }}>
+          <button
+            onClick={() => navigateMonth('prev')}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              color: '#6B7280',
+              cursor: 'pointer',
+              padding: '8px'
+            }}
+          >
+            ‹
+          </button>
+          <h3 style={{
+            margin: 0,
+            fontSize: '18px',
+            fontWeight: '600',
+            color: '#111827'
+          }}>
+            {formatMonthYear(currentMonth)}
+          </h3>
+          <button
+            onClick={() => navigateMonth('next')}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              color: '#6B7280',
+              cursor: 'pointer',
+              padding: '8px'
+            }}
+          >
+            ›
+          </button>
+        </div>
+
+        {/* Days of week */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: '4px',
+          marginBottom: '8px'
+        }}>
+          {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(day => (
+            <div key={day} style={{
+              textAlign: 'center',
+              fontSize: '12px',
+              fontWeight: '500',
+              color: '#6B7280',
+              padding: '8px 4px'
+            }}>
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: '4px',
+          marginBottom: '20px'
+        }}>
+          {days.map((day, index) => (
+            <button
+              key={index}
+              onClick={() => {
+                if (day.isCurrentMonth) {
+                  onDateSelect(day.fullDate);
+                }
+              }}
+              onMouseEnter={() => setHoveredDate(day.fullDate)}
+              onMouseLeave={() => setHoveredDate(null)}
+              style={{
+                aspectRatio: '1',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: day.isCurrentMonth ? 'pointer' : 'default',
+                backgroundColor: day.isSelected 
+                  ? '#8B5CF6' 
+                  : day.isToday 
+                    ? '#F3F4F6' 
+                    : hoveredDate === day.fullDate && day.isCurrentMonth
+                      ? '#F3F4F6'
+                      : 'transparent',
+                color: day.isSelected 
+                  ? 'white' 
+                  : day.isCurrentMonth 
+                    ? '#111827' 
+                    : '#D1D5DB',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {day.date}
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingTop: '16px',
+          borderTop: '1px solid #E5E7EB'
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6B7280',
+              fontSize: '14px',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Cancel
+          </button>
+          <div style={{
+            fontSize: '14px',
+            color: '#111827',
+            fontWeight: '500'
+          }}>
+            {selectedDateObj.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })}
+          </div>
+          <button
+            onClick={() => onClose()}
+            style={{
+              backgroundColor: '#8B5CF6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Select
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modern Time Picker Component
+const ModernTimePicker: React.FC<{
+  selectedTime: string;
+  onTimeSelect: (time: string) => void;
+  onClose: () => void;
+}> = ({ selectedTime, onTimeSelect, onClose }) => {
+  const [hoveredTime, setHoveredTime] = useState<string | null>(null);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '24px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        width: '90%',
+        maxWidth: '300px',
+        maxHeight: '90vh',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <h3 style={{
+          margin: '0 0 20px 0',
+          fontSize: '18px',
+          fontWeight: '600',
+          color: '#111827',
+          textAlign: 'center'
+        }}>
+          Select Time
+        </h3>
+
+        {/* Time options */}
+        <div style={{
+          maxHeight: '300px',
+          overflowY: 'auto',
+          marginBottom: '20px'
+        }}>
+          {TIME_OPTIONS.map(time => (
+            <button
+              key={time}
+              onClick={() => {
+                onTimeSelect(time);
+                onClose();
+              }}
+              onMouseEnter={() => setHoveredTime(time)}
+              onMouseLeave={() => setHoveredTime(null)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                backgroundColor: selectedTime === time 
+                  ? '#F3F4F6' 
+                  : hoveredTime === time 
+                    ? '#F9FAFB' 
+                    : 'transparent',
+                color: selectedTime === time 
+                  ? '#8B5CF6' 
+                  : '#111827',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+                marginBottom: '4px'
+              }}
+            >
+              {time}
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingTop: '16px',
+          borderTop: '1px solid #E5E7EB'
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6B7280',
+              fontSize: '14px',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Cancel
+          </button>
+          <div style={{
+            fontSize: '14px',
+            color: '#111827',
+            fontWeight: '500'
+          }}>
+            {selectedTime || 'No time selected'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface Activity {
   name: string;
@@ -84,6 +530,37 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [showCreateEventForm, setShowCreateEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithActivities | null>(null);
   const [selectedEventForTracks, setSelectedEventForTracks] = useState<EventWithActivities | null>(null);
+  
+  // Modern picker states
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  
+  // Activity picker states
+  const [activityPickerStates, setActivityPickerStates] = useState<{
+    [key: string]: {
+      showStartDate: boolean;
+      showStartTime: boolean;
+      showEndDate: boolean;
+      showEndTime: boolean;
+    }
+  }>({});
+
+  // Helper functions for activity picker states
+  const setActivityPickerState = (activityIndex: number, pickerType: 'showStartDate' | 'showStartTime' | 'showEndDate' | 'showEndTime', value: boolean) => {
+    setActivityPickerStates(prev => ({
+      ...prev,
+      [activityIndex]: {
+        ...prev[activityIndex],
+        [pickerType]: value
+      }
+    }));
+  };
+
+  const getActivityPickerState = (activityIndex: number, pickerType: 'showStartDate' | 'showStartTime' | 'showEndDate' | 'showEndTime'): boolean => {
+    return activityPickerStates[activityIndex]?.[pickerType] || false;
+  };
   // Users state
   const [users, setUsers] = useState<any[]>([]);
   // const [pendingUsers, // setPendingUsers] = useState<any[]>([]); // Unused
@@ -426,9 +903,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       name: event.name || '',
       description: event.description,
       startDate: startDateTime.toISOString().split('T')[0],
-      startTime: startDateTime.toTimeString().slice(0, 5),
+      startTime: convertTo12Hour(startDateTime.toTimeString().slice(0, 5)),
       endDate: endDateTime.toISOString().split('T')[0],
-      endTime: endDateTime.toTimeString().slice(0, 5),
+      endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
       location: typeof event.location === 'string' 
         ? { name: event.location, address: event.location, coordinates: undefined, placeId: undefined }
         : event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
@@ -456,9 +933,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         name: activity.title,
         description: activity.description || '',
         startDate: startDateTime.toISOString().split('T')[0],
-        startTime: startDateTime.toTimeString().slice(0, 5),
+        startTime: convertTo12Hour(startDateTime.toTimeString().slice(0, 5)),
         endDate: endDateTime.toISOString().split('T')[0],
-        endTime: endDateTime.toTimeString().slice(0, 5),
+        endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
         location: activity.location?.name || '',
         category: 'other', // Default category
         capacity: activity.max_capacity?.toString() || '',
@@ -511,8 +988,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const eventData = {
         name: eventFormData.name,
         description: eventFormData.description,
-        start_date: `${eventFormData.startDate}T${eventFormData.startTime}:00`,
-        end_date: `${eventFormData.endDate}T${eventFormData.endTime}:00`,
+        start_date: `${eventFormData.startDate}T${convertTo24Hour(eventFormData.startTime)}:00`,
+        end_date: `${eventFormData.endDate}T${convertTo24Hour(eventFormData.endTime)}:00`,
         location: eventFormData.location,
         capacity: eventFormData.capacity ? parseInt(eventFormData.capacity) : undefined,
         price: eventFormData.price ? parseFloat(eventFormData.price) : undefined,
@@ -527,8 +1004,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
           .map(activity => ({
             name: activity.name,
             description: activity.description,
-            start_time: `${activity.startDate}T${activity.startTime}:00`,
-            end_time: `${activity.endDate}T${activity.endTime}:00`,
+            start_time: `${activity.startDate}T${convertTo24Hour(activity.startTime)}:00`,
+            end_time: `${activity.endDate}T${convertTo24Hour(activity.endTime)}:00`,
             location: activity.location,
             category: activity.category,
             capacity: activity.capacity,
@@ -2368,7 +2845,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                 {event.description}
                               </p>
                               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280', flexWrap: 'wrap' }}>
-                                <span>📅 {new Date(event.start_date || '').toLocaleDateString()}</span>
+                                <span>📅 {formatFriendlyDate(event.start_date || '')}</span>
                                 <span>📍 {typeof event.location === 'string' ? event.location : (event.location as any)?.name || 'Location TBD'}</span>
                                 {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
                                 {event.price && <span>💰 ${event.price / 100}</span>}
@@ -2701,28 +3178,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                      Start Date & Time *
                    </label>
                    <div style={{ display: 'flex', gap: '12px' }}>
-                     <input
-                       type="date"
-                       value={eventFormData.startDate}
-                       onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                     <button
+                       type="button"
+                       onClick={() => setShowStartDatePicker(true)}
                        style={{
                          flex: 1,
                          padding: '8px 12px',
                          border: '1px solid #D1D5DB',
                          borderRadius: '6px',
                          fontSize: '14px',
-                         minWidth: '150px'
+                         minWidth: '150px',
+                         backgroundColor: 'white',
+                         cursor: 'pointer',
+                         textAlign: 'left'
                        }}
-                     />
-                     <TimePicker
-                       value={eventFormData.startTime}
-                       onChange={(time) => setEventFormData(prev => ({ ...prev, startTime: time }))}
-                       placeholder="Select start time"
+                     >
+                       {eventFormData.startDate ? formatFriendlyDate(eventFormData.startDate) : 'Select date'}
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => setShowStartTimePicker(true)}
                        style={{
                          flex: 1,
-                         minWidth: '150px'
+                         minWidth: '150px',
+                         padding: '8px 12px',
+                         border: '1px solid #D1D5DB',
+                         borderRadius: '6px',
+                         fontSize: '14px',
+                         backgroundColor: 'white',
+                         cursor: 'pointer',
+                         textAlign: 'left'
                        }}
-                     />
+                     >
+                       {eventFormData.startTime || 'Select time'}
+                     </button>
                    </div>
                  </div>
 
@@ -2732,28 +3221,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                       End Date & Time *
                     </label>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                      <input
-                        type="date"
-                        value={eventFormData.endDate}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, endDate: e.target.value }))}
+                      <button
+                        type="button"
+                        onClick={() => setShowEndDatePicker(true)}
                         style={{
                           flex: 1,
                           padding: '8px 12px',
                           border: '1px solid #D1D5DB',
                           borderRadius: '6px',
                           fontSize: '14px',
-                          minWidth: '150px'
+                          minWidth: '150px',
+                          backgroundColor: 'white',
+                          cursor: 'pointer',
+                          textAlign: 'left'
                         }}
-                      />
-                      <TimePicker
-                        value={eventFormData.endTime}
-                        onChange={(time) => setEventFormData(prev => ({ ...prev, endTime: time }))}
-                        placeholder="Select end time"
+                      >
+                        {eventFormData.endDate ? formatFriendlyDate(eventFormData.endDate) : 'Select date'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowEndTimePicker(true)}
                         style={{
                           flex: 1,
-                          minWidth: '150px'
+                          minWidth: '150px',
+                          padding: '8px 12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          backgroundColor: 'white',
+                          cursor: 'pointer',
+                          textAlign: 'left'
                         }}
-                      />
+                      >
+                        {eventFormData.endTime || 'Select time'}
+                      </button>
                     </div>
                   </div>
 
@@ -3035,29 +3536,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               Start Date & Time *
                             </label>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <input
-                                type="date"
-                                value={activity.startDate}
-                                onChange={(e) => updateActivity(index, 'startDate', e.target.value)}
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showStartDate', true)}
                                 style={{
                                   flex: 1,
                                   padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
                                   borderRadius: '4px',
                                   fontSize: '12px',
-                                  minWidth: '120px'
+                                  minWidth: '120px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
-                              />
-                              <TimePicker
-                                value={activity.startTime}
-                                onChange={(time) => updateActivity(index, 'startTime', time)}
-                                placeholder="Start time"
+                              >
+                                {activity.startDate ? formatFriendlyDate(activity.startDate) : 'Select date'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showStartTime', true)}
                                 style={{
                                   flex: 1,
                                   fontSize: '12px',
-                                  minWidth: '120px'
+                                  minWidth: '120px',
+                                  padding: '6px 8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
-                              />
+                              >
+                                {activity.startTime || 'Select time'}
+                              </button>
                             </div>
                           </div>
 
@@ -3067,29 +3579,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               End Date & Time *
                             </label>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <input
-                                type="date"
-                                value={activity.endDate}
-                                onChange={(e) => updateActivity(index, 'endDate', e.target.value)}
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showEndDate', true)}
                                 style={{
                                   flex: 1,
                                   padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
                                   borderRadius: '4px',
                                   fontSize: '12px',
-                                  minWidth: '120px'
+                                  minWidth: '120px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
-                              />
-                              <TimePicker
-                                value={activity.endTime}
-                                onChange={(time) => updateActivity(index, 'endTime', time)}
-                                placeholder="End time"
+                              >
+                                {activity.endDate ? formatFriendlyDate(activity.endDate) : 'Select date'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showEndTime', true)}
                                 style={{
                                   flex: 1,
                                   fontSize: '12px',
-                                  minWidth: '120px'
+                                  minWidth: '120px',
+                                  padding: '6px 8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
-                              />
+                              >
+                                {activity.endTime || 'Select time'}
+                              </button>
                             </div>
                           </div>
                           <LocationPicker
@@ -3213,6 +3736,100 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
           />
         </div>
       )}
+
+      {/* Modern Calendar and Time Pickers */}
+      {showStartDatePicker && (
+        <ModernCalendar
+          selectedDate={eventFormData.startDate}
+          onDateSelect={(date) => {
+            setEventFormData(prev => ({ ...prev, startDate: date }));
+            setShowStartDatePicker(false);
+          }}
+          onClose={() => setShowStartDatePicker(false)}
+        />
+      )}
+
+      {showStartTimePicker && (
+        <ModernTimePicker
+          selectedTime={eventFormData.startTime}
+          onTimeSelect={(time) => {
+            setEventFormData(prev => ({ ...prev, startTime: time }));
+            setShowStartTimePicker(false);
+          }}
+          onClose={() => setShowStartTimePicker(false)}
+        />
+      )}
+
+      {showEndDatePicker && (
+        <ModernCalendar
+          selectedDate={eventFormData.endDate}
+          onDateSelect={(date) => {
+            setEventFormData(prev => ({ ...prev, endDate: date }));
+            setShowEndDatePicker(false);
+          }}
+          onClose={() => setShowEndDatePicker(false)}
+        />
+      )}
+
+      {showEndTimePicker && (
+        <ModernTimePicker
+          selectedTime={eventFormData.endTime}
+          onTimeSelect={(time) => {
+            setEventFormData(prev => ({ ...prev, endTime: time }));
+            setShowEndTimePicker(false);
+          }}
+          onClose={() => setShowEndTimePicker(false)}
+        />
+      )}
+
+      {/* Activity Calendar and Time Pickers */}
+      {activities.map((activity, index) => (
+        <div key={`activity-pickers-${index}`}>
+          {getActivityPickerState(index, 'showStartDate') && (
+            <ModernCalendar
+              selectedDate={activity.startDate}
+              onDateSelect={(date) => {
+                updateActivity(index, 'startDate', date);
+                setActivityPickerState(index, 'showStartDate', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showStartDate', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showStartTime') && (
+            <ModernTimePicker
+              selectedTime={activity.startTime}
+              onTimeSelect={(time) => {
+                updateActivity(index, 'startTime', time);
+                setActivityPickerState(index, 'showStartTime', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showStartTime', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showEndDate') && (
+            <ModernCalendar
+              selectedDate={activity.endDate}
+              onDateSelect={(date) => {
+                updateActivity(index, 'endDate', date);
+                setActivityPickerState(index, 'showEndDate', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showEndDate', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showEndTime') && (
+            <ModernTimePicker
+              selectedTime={activity.endTime}
+              onTimeSelect={(time) => {
+                updateActivity(index, 'endTime', time);
+                setActivityPickerState(index, 'showEndTime', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showEndTime', false)}
+            />
+          )}
+        </div>
+      ))}
 
     </div>
   );

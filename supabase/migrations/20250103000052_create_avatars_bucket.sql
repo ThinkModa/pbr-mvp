@@ -19,17 +19,21 @@ DROP POLICY IF EXISTS "Users can delete their own avatar" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view avatars" ON storage.objects;
 
 -- Allow public read access to all images (including avatars)
+DROP POLICY IF EXISTS "Public read access for all images" ON storage.objects;
 CREATE POLICY "Public read access for all images" ON storage.objects
 FOR SELECT USING (true);
 
 -- Allow anonymous users to upload images (for our testing environment)
+DROP POLICY IF EXISTS "Anonymous users can upload images" ON storage.objects;
 CREATE POLICY "Anonymous users can upload images" ON storage.objects
 FOR INSERT WITH CHECK (true);
 
 -- Allow anonymous users to update images
+DROP POLICY IF EXISTS "Anonymous users can update images" ON storage.objects;
 CREATE POLICY "Anonymous users can update images" ON storage.objects
 FOR UPDATE USING (true);
 
 -- Allow anonymous users to delete images
+DROP POLICY IF EXISTS "Anonymous users can delete images" ON storage.objects;
 CREATE POLICY "Anonymous users can delete images" ON storage.objects
 FOR DELETE USING (true);

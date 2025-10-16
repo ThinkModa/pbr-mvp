@@ -11,6 +11,9 @@ export interface EventWithActivities {
   start_time: string;
   end_time: string;
   location: { name: string } | null;
+  location_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   max_capacity: number | null;
   current_rsvps: number;
   is_free: boolean;
@@ -30,6 +33,9 @@ export interface Activity {
   start_time: string;
   end_time: string;
   location: { name: string } | null;
+  location_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
@@ -37,8 +43,8 @@ export interface Activity {
 }
 
 export class EventsService {
-  // Use the network IP address that Expo Go can reach
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
+  // Use localhost for testing environment consistency
+  private static readonly SUPABASE_URL = 'http://192.168.1.95:54321';
   private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
   // Get all published events with their activities

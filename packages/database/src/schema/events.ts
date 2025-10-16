@@ -45,6 +45,10 @@ export const events = pgTable('events', {
     isVirtual: boolean;
     meetingUrl?: string;
   }>(),
+  // Location coordinates for Google Maps integration
+  locationAddress: text('location_address'),
+  latitude: varchar('latitude', { length: 20 }), // Using varchar to match Supabase DECIMAL
+  longitude: varchar('longitude', { length: 20 }), // Using varchar to match Supabase DECIMAL
   
   // Capacity and pricing
   maxCapacity: integer('max_capacity'),
@@ -91,6 +95,10 @@ export const activities = pgTable('activities', {
       lng: number;
     };
   }>(),
+  // Location coordinates for Google Maps integration
+  locationAddress: text('location_address'),
+  latitude: varchar('latitude', { length: 20 }), // Using varchar to match Supabase DECIMAL
+  longitude: varchar('longitude', { length: 20 }), // Using varchar to match Supabase DECIMAL
   maxCapacity: integer('max_capacity'),
   currentRsvps: integer('current_rsvps').notNull().default(0),
   isRequired: boolean('is_required').notNull().default(false),

@@ -15,12 +15,12 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
+// import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
 import MapView, { Marker } from 'react-native-maps';
 import { showLocation } from 'react-native-map-link';
-import * as ImagePicker from 'expo-image-picker';
-import { useAuth } from '../contexts/SupabaseAuthContext';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/MockAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker, ActivitySpeaker } from '../services/speakersService';
@@ -28,7 +28,7 @@ import { BusinessesService, EventBusiness } from '../services/businessesService'
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
 import { RealTimeService } from '../services/realTimeService';
-import { NotificationService } from '../services/notificationService';
+// import { NotificationService } from '../services/notificationService'; // Temporarily disabled - requires native compilation
 import { ProfileService } from '../services/profileService';
 import { TrackService } from '../services/trackService';
 import EventModal from './EventModal';
@@ -54,7 +54,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   const [selectedEvent, setSelectedEvent] = useState<EventWithActivities | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [userRSVPs, setUserRSVPs] = useState<Record<string, RSVPStatus>>({});
-  const [showMyEvents, setShowMyEvents] = useState(false);
+  const [showMyevents, setShowMyevents] = useState(false);
   
   // Speaker state management
   const [eventSpeakers, setEventSpeakers] = useState<EventSpeaker[]>([]);
@@ -267,23 +267,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
 
   const handleActivityPress = (activity: any) => {
     console.log('🎯 Activity pressed in MainApp:', activity);
-    console.log('🎯 Activity details:', {
-      id: activity?.id,
-      title: activity?.title,
-      description: activity?.description,
-      event_id: activity?.event_id
-    });
-    console.log('🎯 Current state before update:', {
-      modalVisible,
-      modalView,
-      selectedActivity: selectedActivity?.title
-    });
-    console.log('🎯 Setting selectedActivity and switching to activity view...');
     setSelectedActivity(activity);
     setModalView('activity');
     // Load activity-specific speakers
     loadActivitySpeakers(activity.id);
-    console.log('🎯 Activity view should be visible now - smooth transition');
   };
 
   const handleTrackSelected = async (trackId: string) => {
@@ -450,6 +437,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     setOrganizationModalVisible(true);
   };
 
+  // Handle map press to open native map apps
   const handleMapPress = async (event: EventWithActivities) => {
     console.log('🗺️ Map pressed for event:', event.title);
     
@@ -457,19 +445,86 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
       // Check if we have coordinates
       if (event.latitude && event.longitude) {
         console.log('📍 Opening map with coordinates:', event.latitude, event.longitude);
-        await showLocation({
-          latitude: Number(event.latitude),
-          longitude: Number(event.longitude),
-          title: event.title,
-          sourceLatitude: undefined, // Optional: current location
-          sourceLongitude: undefined,
-        });
+        
+        const lat = Number(event.latitude);
+        const lng = Number(event.longitude);
+        const title = encodeURIComponent(event.title);
+        
+        // Create map URLs
+        const appleMapsUrl = `http://maps.apple.com/?q=${title}&ll=${lat},${lng}`;
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        
+        // Show action sheet to choose map app
+        if (Platform.OS === 'ios') {
+          // Use ActionSheetIOS for native iOS experience
+          const { ActionSheetIOS } = require('react-native');
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: 'Open in Maps',
+              message: 'Choose your preferred maps app',
+              options: ['Cancel', 'Apple Maps', 'Google Maps'],
+              cancelButtonIndex: 0,
+            },
+            async (buttonIndex) => {
+              if (buttonIndex === 1) {
+                // Apple Maps
+                await Linking.openURL(appleMapsUrl);
+              } else if (buttonIndex === 2) {
+                // Google Maps
+                await Linking.openURL(googleMapsUrl);
+              }
+            }
+          );
+        } else {
+          // Use Alert for Android
+          Alert.alert(
+            'Open in Maps',
+            'Choose your preferred maps app',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Google Maps', onPress: () => Linking.openURL(googleMapsUrl) },
+              { text: 'Apple Maps', onPress: () => Linking.openURL(appleMapsUrl) },
+            ]
+          );
+        }
       } else if (event.location_address) {
         console.log('📍 Opening map with address:', event.location_address);
-        await showLocation({
-          address: event.location_address,
-          title: event.title,
-        });
+        
+        const address = encodeURIComponent(event.location_address);
+        const title = encodeURIComponent(event.title);
+        
+        const appleMapsUrl = `http://maps.apple.com/?q=${title}&address=${address}`;
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+        
+        // Show action sheet to choose map app
+        if (Platform.OS === 'ios') {
+          const { ActionSheetIOS } = require('react-native');
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: 'Open in Maps',
+              message: 'Choose your preferred maps app',
+              options: ['Cancel', 'Apple Maps', 'Google Maps'],
+              cancelButtonIndex: 0,
+            },
+            async (buttonIndex) => {
+              if (buttonIndex === 1) {
+                await Linking.openURL(appleMapsUrl);
+              } else if (buttonIndex === 2) {
+                await Linking.openURL(googleMapsUrl);
+              }
+            }
+          );
+        } else {
+          Alert.alert(
+            'Open in Maps',
+            'Choose your preferred maps app',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Google Maps', onPress: () => Linking.openURL(googleMapsUrl) },
+              { text: 'Apple Maps', onPress: () => Linking.openURL(appleMapsUrl) },
+            ]
+          );
+        }
       } else {
         console.log('📍 No location data available');
         Alert.alert(
@@ -488,12 +543,12 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     }
   };
 
-  const toggleMyEvents = () => {
-    setShowMyEvents(!showMyEvents);
+  const toggleMyevents = () => {
+    setShowMyevents(!showMyevents);
   };
 
   const getFilteredEvents = () => {
-    if (!showMyEvents || !user) {
+    if (!showMyevents || !user) {
       return events;
     }
     
@@ -600,7 +655,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Events</Text>
+          <Text style={styles.headerTitle}>events</Text>
         </View>
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#3B82F6" />
@@ -614,7 +669,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Events</Text>
+          <Text style={styles.headerTitle}>events</Text>
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
@@ -642,11 +697,11 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                   <Text style={styles.filterButtonText}>Filter</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.myEventsButton, showMyEvents && styles.myEventsButtonActive]}
-                  onPress={toggleMyEvents}
+                  style={[styles.myeventsButton, showMyevents && styles.myeventsButtonActive]}
+                  onPress={toggleMyevents}
                 >
-                  <Text style={[styles.myEventsButtonText, showMyEvents && styles.myEventsButtonTextActive]}>
-                    {showMyEvents ? 'All Events' : 'My Events'}
+                  <Text style={[styles.myeventsButtonText, showMyevents && styles.myeventsButtonTextActive]}>
+                    {showMyevents ? 'All events' : 'My events'}
                   </Text>
                 </TouchableOpacity>
 
@@ -1344,43 +1399,63 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
 
                 {/* Map Section */}
                 <View style={{ padding: 20, paddingTop: 0 }}>
-                  <TouchableOpacity 
-                    onPress={() => handleMapPress(selectedEvent)}
-                    style={{ backgroundColor: '#F3F4F6', borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}
-                    activeOpacity={0.8}
-                  >
-                    {selectedEvent.latitude && selectedEvent.longitude ? (
-                      // Real Map View
-                      <MapView
-                        style={{ height: 150, width: '100%' }}
-                        initialRegion={{
-                          latitude: Number(selectedEvent.latitude),
-                          longitude: Number(selectedEvent.longitude),
-                          latitudeDelta: 0.01,
-                          longitudeDelta: 0.01,
-                        }}
-                        scrollEnabled={false}
-                        zoomEnabled={false}
-                        pitchEnabled={false}
-                        rotateEnabled={false}
-                        showsUserLocation={false}
-                        showsMyLocationButton={false}
-                        showsCompass={false}
-                        showsScale={false}
-                        showsBuildings={false}
-                        showsTraffic={false}
-                        showsIndoors={false}
-                        showsPointsOfInterest={false}
-                      >
-                        <Marker
-                          coordinate={{
+          <TouchableOpacity 
+            onPress={() => handleMapPress(selectedEvent)}
+            style={{ 
+              backgroundColor: '#F3F4F6', 
+              borderRadius: 8, 
+              overflow: 'hidden', 
+              marginBottom: 20,
+              height: 150,
+              width: '100%'
+            }}
+            activeOpacity={0.8}
+          >
+            {selectedEvent.latitude && selectedEvent.longitude ? (
+              // Real Interactive Map
+              <View style={{ 
+                position: 'relative',
+                height: 150,
+                width: '100%'
+              }}>
+                <MapView
+                  style={{ 
+                    height: 150, 
+                    width: '100%',
+                    flex: 1
+                  }}
+                          initialRegion={{
                             latitude: Number(selectedEvent.latitude),
                             longitude: Number(selectedEvent.longitude),
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
                           }}
-                          title={selectedEvent.title}
-                          description={selectedEvent.location_address || selectedEvent.location?.name}
-                        />
-                      </MapView>
+                          mapType="standard"
+                          userInterfaceStyle="dark"
+                          scrollEnabled={false}
+                          zoomEnabled={false}
+                          pitchEnabled={false}
+                          rotateEnabled={false}
+                          showsUserLocation={false}
+                          showsMyLocationButton={false}
+                          showsCompass={false}
+                          showsScale={false}
+                          showsBuildings={true}
+                          showsTraffic={false}
+                          showsIndoors={false}
+                        >
+                          <Marker
+                            coordinate={{
+                              latitude: Number(selectedEvent.latitude),
+                              longitude: Number(selectedEvent.longitude),
+                            }}
+                            title={selectedEvent.location?.name || selectedEvent.title}
+                            description={selectedEvent.location_address || undefined}
+                            pinColor="#007AFF"
+                            tracksViewChanges={false}
+                          />
+                        </MapView>
+                      </View>
                     ) : (
                       // Placeholder View
                       <View style={{ 
@@ -1788,6 +1863,85 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                       </View>
                     );
                   })()}
+
+                  {/* Map Section for Activity */}
+                  <View style={{ padding: 20, paddingTop: 0 }}>
+                    <TouchableOpacity 
+                      onPress={() => handleMapPress(selectedActivity)}
+                      style={{ 
+                        backgroundColor: '#F3F4F6', 
+                        borderRadius: 8, 
+                        overflow: 'hidden', 
+                        marginBottom: 20,
+                        height: 150,
+                        width: '100%'
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      {selectedActivity.latitude && selectedActivity.longitude ? (
+                        // Real Interactive Map
+                        <View style={{ 
+                          position: 'relative',
+                          height: 150,
+                          width: '100%'
+                        }}>
+                          <MapView
+                            style={{ 
+                              height: 150, 
+                              width: '100%',
+                              flex: 1
+                            }}
+                            initialRegion={{
+                              latitude: Number(selectedActivity.latitude),
+                              longitude: Number(selectedActivity.longitude),
+                              latitudeDelta: 0.01,
+                              longitudeDelta: 0.01,
+                            }}
+                            mapType="standard"
+                            userInterfaceStyle="dark"
+                            scrollEnabled={false}
+                            zoomEnabled={false}
+                            pitchEnabled={false}
+                            rotateEnabled={false}
+                            showsUserLocation={false}
+                            showsMyLocationButton={false}
+                            showsCompass={false}
+                            showsScale={false}
+                            showsBuildings={true}
+                            showsTraffic={false}
+                            showsIndoors={false}
+                          >
+                            <Marker
+                              coordinate={{
+                                latitude: Number(selectedActivity.latitude),
+                                longitude: Number(selectedActivity.longitude),
+                              }}
+                              title={selectedActivity.location?.name || selectedActivity.title}
+                              description={selectedActivity.location_address || selectedActivity.location?.address || undefined}
+                              pinColor="#007AFF"
+                              tracksViewChanges={false}
+                            />
+                          </MapView>
+                        </View>
+                      ) : (
+                        // Placeholder View
+                        <View style={{ 
+                          height: 150, 
+                          justifyContent: 'center', 
+                          alignItems: 'center',
+                          backgroundColor: '#E5E7EB'
+                        }}>
+                          <Text style={{ fontSize: 48, marginBottom: 10 }}>🗺️</Text>
+                          <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
+                            {selectedActivity.location_address ? 'Tap to open in Maps' : 'Map view coming soon'}
+                          </Text>
+                          <Text style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 5, paddingHorizontal: 20 }}>
+                            {selectedActivity.location?.name || selectedActivity.location_address || 'Location details will be displayed here'}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             ) : modalView === 'track' && selectedEvent ? (
@@ -2154,60 +2308,13 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleImageUpload = async () => {
-    try {
-      // Request permissions
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
-        return;
-      }
-
-      // Show action sheet
-      Alert.alert(
-        'Select Profile Picture',
-        'Choose how you want to add a profile picture',
-        [
-          { text: 'Camera', onPress: () => openImagePicker('camera') },
-          { text: 'Photo Library', onPress: () => openImagePicker('library') },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request permissions. Please try again.');
-    }
+    // Temporarily disabled - ImagePicker requires native compilation
+    Alert.alert('Feature Disabled', 'Image upload is temporarily disabled in Expo Go. This feature will be available in the production build.');
   };
 
-  const openImagePicker = async (source: 'camera' | 'library') => {
-    try {
-      const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      };
-
-      let result;
-      if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission Required', 'Please grant permission to access your camera to take a photo.');
-          return;
-        }
-        result = await ImagePicker.launchCameraAsync(options);
-      } else {
-        result = await ImagePicker.launchImageLibraryAsync(options);
-      }
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        await uploadProfileImage(asset.uri);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
-  };
+  // const openImagePicker = async (source: 'camera' | 'library') => {
+  //   // Temporarily disabled - ImagePicker requires native compilation
+  // };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
@@ -2440,7 +2547,7 @@ const ProfileScreen: React.FC = () => {
           <View style={styles.profileInfoItem}>
             <Text style={styles.profileInfoIcon}>📅</Text>
             <View style={styles.profileInfoContent}>
-              <Text style={styles.profileInfoLabel}>Past Events Attended</Text>
+              <Text style={styles.profileInfoLabel}>Past events Attended</Text>
               {profile.eventHistory.length === 0 ? (
                 <Text style={styles.emptyText}>No events attended yet</Text>
               ) : (
@@ -2584,46 +2691,13 @@ const ProfileEditModal: React.FC<{
   };
 
   const handleImageUpload = async () => {
-    try {
-      // Request permissions
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant permission to access your photo library to upload a profile picture.');
-        return;
-      }
-      // Show action sheet
-      Alert.alert(
-        'Select Profile Picture',
-        'Choose how you want to add a profile picture',
-        [
-          { text: 'Camera', onPress: () => openImagePicker('camera') },
-          { text: 'Photo Library', onPress: () => openImagePicker('library') },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request permissions. Please try again.');
-    }
+    // Temporarily disabled - ImagePicker requires native compilation
+    Alert.alert('Feature Disabled', 'Image upload is temporarily disabled in Expo Go. This feature will be available in the production build.');
   };
 
-  const openImagePicker = async (source: 'camera' | 'library') => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        await uploadProfileImage(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
-  };
+  // const openImagePicker = async (source: 'camera' | 'library') => {
+  //   // Temporarily disabled - ImagePicker requires native compilation
+  // };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
@@ -3414,7 +3488,7 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
               onPress={() => setGroupFilter('events')}
             >
               <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
-                Events
+                events
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -3478,7 +3552,7 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
               onPress={() => setGroupFilter('events')}
             >
               <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
-                Events
+                events
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -3544,7 +3618,7 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
             onPress={() => setGroupFilter('events')}
           >
             <Text style={[styles.filterButtonText, groupFilter === 'events' && styles.activeFilterButtonText]}>
-              Events
+              events
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -4374,22 +4448,22 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  myEventsButton: {
+  myeventsButton: {
     backgroundColor: '#10B981',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
     marginLeft: 10,
   },
-  myEventsButtonActive: {
+  myeventsButtonActive: {
     backgroundColor: '#3B82F6',
   },
-  myEventsButtonText: {
+  myeventsButtonText: {
     color: 'white',
     fontWeight: '600',
     fontSize: 12,
   },
-  myEventsButtonTextActive: {
+  myeventsButtonTextActive: {
     color: 'white',
   },
   floatingActionButton: {
@@ -4436,7 +4510,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
-  // Events Styles
+  // events Styles
   eventsList: {
     padding: 20,
   },
