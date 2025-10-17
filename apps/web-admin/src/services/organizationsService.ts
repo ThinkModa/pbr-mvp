@@ -63,7 +63,7 @@ export class OrganizationsService {
     };
     
     if (includeRepresentation) {
-      headers['Prefer'] = 'return=representation';
+      (headers as any)['Prefer'] = 'return=representation';
     }
     
     return headers;
