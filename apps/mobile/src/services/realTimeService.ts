@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase';
+// import { NotificationService } from './notificationService'; // Temporarily disabled
 // Real-time service for live chat updates
 // Uses Supabase Realtime via REST API polling for Expo Go compatibility
 
@@ -26,8 +28,6 @@ export type MessageCallback = (message: RealtimeMessage) => void;
 export type ThreadUpdateCallback = (update: RealtimeThreadUpdate) => void;
 
 export class RealTimeService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
   
   private static pollingIntervals: Map<string, NodeJS.Timeout> = new Map();
   private static messageCallbacks: Map<string, MessageCallback[]> = new Map();
@@ -35,13 +35,6 @@ export class RealTimeService {
   private static lastMessageTimestamps: Map<string, string> = new Map();
   private static lastThreadUpdates: Map<string, string> = new Map();
 
-  private static getHeaders() {
-    return {
-      'apikey': this.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    };
-  }
 
   // Start listening for new messages in a thread
   static startListeningToThread(threadId: string, userId: string): void {
@@ -123,21 +116,24 @@ export class RealTimeService {
   // Check for new messages in a thread
   private static async checkForNewMessages(threadId: string, userId: string): Promise<void> {
     const lastTimestamp = this.lastMessageTimestamps.get(threadId);
-    let query = `${this.SUPABASE_URL}/rest/v1/chat_messages?thread_id=eq.${threadId}&order=created_at.desc&limit=10`;
+    
+    let query = supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: false })
+      .limit(10);
     
     if (lastTimestamp) {
-      query += `&created_at=gt.${lastTimestamp}`;
+      query = query.gt('created_at', lastTimestamp);
     }
 
-    const response = await fetch(query, {
-      headers: this.getHeaders(),
-    });
+    const { data: messages, error } = await query;
 
-    if (!response.ok) {
+    if (error) {
+      console.error('Error checking for new messages:', error);
       return;
     }
-
-    const messages = await response.json();
     
     if (messages.length > 0) {
       // Update last timestamp
@@ -155,6 +151,13 @@ export class RealTimeService {
         // Enrich message with user data
         const enrichedMessage = await this.enrichMessage(message);
         
+        // Send push notification for new message
+        try {
+          await this.sendChatNotification(enrichedMessage, threadId);
+        } catch (error) {
+          console.error('Error sending chat notification:', error);
+        }
+        
         // Notify callbacks
         const callbacks = this.messageCallbacks.get(threadId);
         if (callbacks) {
@@ -166,18 +169,15 @@ export class RealTimeService {
 
   // Check for thread updates (unread count, last message time)
   private static async checkForThreadUpdates(threadId: string, userId: string): Promise<void> {
-    const response = await fetch(
-      `${this.SUPABASE_URL}/rest/v1/chat_threads?id=eq.${threadId}&select=id,last_message_at`,
-      {
-        headers: this.getHeaders(),
-      }
-    );
+    const { data: threads, error } = await supabase
+      .from('chat_threads')
+      .select('id, last_message_at')
+      .eq('id', threadId);
 
-    if (!response.ok) {
+    if (error) {
+      console.error('Error checking for thread updates:', error);
       return;
     }
-
-    const threads = await response.json();
     
     if (threads.length > 0) {
       const thread = threads[0];
@@ -188,19 +188,15 @@ export class RealTimeService {
         this.lastThreadUpdates.set(threadId, thread.last_message_at || '');
         
         // Get unread count
-        const membershipResponse = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${threadId}&user_id=eq.${userId}&select=unread_count`,
-          {
-            headers: this.getHeaders(),
-          }
-        );
+        const { data: memberships, error: membershipError } = await supabase
+          .from('chat_memberships')
+          .select('unread_count')
+          .eq('thread_id', threadId)
+          .eq('user_id', userId);
         
         let unreadCount = 0;
-        if (membershipResponse.ok) {
-          const memberships = await membershipResponse.json();
-          if (memberships.length > 0) {
-            unreadCount = memberships[0].unread_count || 0;
-          }
+        if (!membershipError && memberships && memberships.length > 0) {
+          unreadCount = memberships[0].unread_count || 0;
         }
         
         // Notify callbacks
@@ -231,21 +227,57 @@ export class RealTimeService {
 
     // Add user data
     try {
-      const userResponse = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/users?id=eq.${message.user_id}&select=id,name,email,profile_image_url`,
-        { headers: this.getHeaders() }
-      );
-      if (userResponse.ok) {
-        const users = await userResponse.json();
-        if (users.length > 0) {
-          enriched.user = users[0];
-        }
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, name, email, profile_image_url')
+        .eq('id', message.user_id);
+      
+      if (!error && users && users.length > 0) {
+        enriched.user = users[0];
       }
     } catch (error) {
       console.error('Error fetching user data for real-time message:', error);
     }
 
     return enriched;
+  }
+
+  // Send push notification for new chat message
+  private static async sendChatNotification(message: RealtimeMessage, threadId: string): Promise<void> {
+    try {
+      // Get thread information to determine notification title
+      const { data: thread, error: threadError } = await supabase
+        .from('chat_threads')
+        .select('name, type')
+        .eq('id', threadId)
+        .single();
+
+      if (threadError || !thread) {
+        console.error('Error fetching thread for notification:', threadError);
+        return;
+      }
+
+      // Determine notification title based on thread type
+      let title: string;
+      if (thread.type === 'dm') {
+        title = message.user?.name || 'New Message';
+      } else {
+        title = thread.name || 'Group Chat';
+      }
+
+      // Create notification (temporarily disabled)
+      // await NotificationService.createChatNotification({
+      //   title,
+      //   body: message.content,
+      //   data: {
+      //     threadId,
+      //     messageId: message.id,
+      //     type: 'chat_message'
+      //   }
+      // });
+    } catch (error) {
+      console.error('Error creating chat notification:', error);
+    }
   }
 
   // Clean up all listeners (call when app goes to background)

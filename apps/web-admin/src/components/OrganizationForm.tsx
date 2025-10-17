@@ -75,6 +75,15 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
     }
   }, [organization]);
 
+  // Load activities when assigned events change
+  useEffect(() => {
+    if (organization && assignedEvents.length > 0) {
+      loadUpcomingActivities();
+    } else {
+      setUpcomingActivities([]);
+    }
+  }, [assignedEvents, organization]);
+
   const loadEventsAndAssignments = async () => {
     if (!organization) return;
     
@@ -266,18 +275,65 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
       backgroundColor: 'white',
       borderRadius: '8px',
       border: '1px solid #e5e7eb',
-      padding: '24px'
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
-      <h2 style={{
-        fontSize: '20px',
-        fontWeight: '600',
-        color: '#111827',
-        marginBottom: '24px'
-      }}>
-        {organization ? 'Edit Organization' : 'Create New Organization'}
-      </h2>
+      <form onSubmit={handleSubmit} style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Sticky Header */}
+        <div style={{
+          padding: '20px 24px',
+          borderBottom: '1px solid #E5E7EB',
+          backgroundColor: 'white',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: 0 }}>
+            {organization ? 'Edit Organization' : 'Add Organization'}
+          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#6B7280',
+                border: '1px solid #D1D5DB',
+                borderRadius: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              style={{
+                backgroundColor: isLoading ? '#9CA3AF' : '#3B82F6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: isLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {organization ? 'Update Organization' : 'Add Organization'}
+            </button>
+          </div>
+        </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Scrollable Form Content */}
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Basic Information */}
         <div>
           <h3 style={{ fontSize: '18px', fontWeight: '500', color: '#111827', marginBottom: '16px' }}>Basic Information</h3>
@@ -785,41 +841,8 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onSub
           </div>
         </div>
 
-        {/* Form Actions */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#f3f4f6',
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              fontSize: '14px',
-              color: '#374151',
-              cursor: 'pointer'
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isLoading}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: isLoading ? '#9ca3af' : '#3b82f6',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '14px',
-              color: 'white',
-              cursor: isLoading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isLoading ? 'Saving...' : (organization ? 'Update Organization' : 'Create Organization')}
-          </button>
         </div>
       </form>
-
     </div>
   );
 };

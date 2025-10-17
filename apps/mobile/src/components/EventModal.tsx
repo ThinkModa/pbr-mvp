@@ -22,7 +22,7 @@ import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/SupabaseAuthContext';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
@@ -79,15 +79,31 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   // Open in Maps function
   const openInMaps = async (latitude: number, longitude: number, title?: string, address?: string) => {
     try {
-      await showLocation({
-        latitude,
-        longitude,
-        title: title || 'Event Location',
-        dialogTitle: 'Open in Maps',
-        dialogMessage: 'Choose your preferred maps app',
-        cancelText: 'Cancel',
-        alwaysIncludeGoogle: true,
-      });
+      if (Platform.OS === 'ios') {
+        // iOS: Use ActionSheet to choose map app
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Cancel', 'Apple Maps', 'Google Maps'],
+            cancelButtonIndex: 0,
+            title: 'Open in Maps',
+          },
+          (buttonIndex: number) => {
+            if (buttonIndex === 1) {
+              // Apple Maps
+              const url = `http://maps.apple.com/?ll=${latitude},${longitude}&q=${encodeURIComponent(title || 'Event Location')}`;
+              Linking.openURL(url);
+            } else if (buttonIndex === 2) {
+              // Google Maps
+              const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+              Linking.openURL(url);
+            }
+          }
+        );
+      } else {
+        // Android: Open Google Maps directly
+        const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+        Linking.openURL(url);
+      }
     } catch (error) {
       console.error('Error opening maps:', error);
     }

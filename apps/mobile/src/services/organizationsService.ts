@@ -36,9 +36,22 @@ export interface EventOrganization {
   organization?: Organization;
 }
 
+export interface ActivityOrganization {
+  id: string;
+  activityId: string;
+  organizationId: string;
+  role: string;
+  displayOrder: number;
+  isConfirmed: boolean;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+  organization?: Organization;
+}
+
 export class OrganizationsService {
-  private static readonly SUPABASE_URL = 'http://192.168.1.129:54321';
-  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+  private static readonly SUPABASE_URL = 'https://zqjziejllixifpwzbdnf.supabase.co';
+  private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxanppZWpsbGl4aWZwd3piZG5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNzgxMzIsImV4cCI6MjA3NTY1NDEzMn0.xCpv4401K5-WzojCMLy4HdY5xQJBP9xbar1sJTFkVgc';
 
   private static getHeaders() {
     return {
@@ -180,5 +193,49 @@ export class OrganizationsService {
     const transformedOrganizations = organizations.map((org: any) => this.transformOrganizationData(org));
     console.log('✅ Retrieved all organizations:', transformedOrganizations.length);
     return transformedOrganizations;
+  }
+
+  // Get organizations for a specific activity
+  static async getActivityOrganizations(activityId: string): Promise<ActivityOrganization[]> {
+    console.log('Getting activity organizations:', { activityId });
+    
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/activity_organizations?activity_id=eq.${activityId}&is_public=eq.true&order=display_order.asc`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error getting activity organizations:', errorText);
+      throw new Error(`Failed to get activity organizations: ${errorText}`);
+    }
+
+    const responseText = await response.text();
+    console.log('Get activity organizations response text:', responseText);
+    
+    if (!responseText.trim()) {
+      console.log('✅ No activity organizations found (empty response)');
+      return [];
+    }
+    
+    const activityOrganizations = JSON.parse(responseText);
+    console.log('✅ Retrieved activity organizations:', activityOrganizations.length);
+
+    // Fetch organization details for each activity organization
+    const organizationsWithDetails = await Promise.all(
+      activityOrganizations.map(async (activityOrg: any) => {
+        try {
+          const organization = await this.getOrganizationById(activityOrg.organization_id);
+          return { ...activityOrg, organization };
+        } catch (error) {
+          console.error('Error fetching organization details:', error);
+          return activityOrg;
+        }
+      })
+    );
+
+    return organizationsWithDetails;
   }
 }

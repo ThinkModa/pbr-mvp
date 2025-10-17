@@ -1,0 +1,82 @@
+{
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Debug"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "channel": "staging",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "staging-internal": {
+      "distribution": "internal",
+      "channel": "staging-internal",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "testflight": {
+      "distribution": "store",
+      "channel": "testflight",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "staging-testflight": {
+      "distribution": "internal",
+      "channel": "staging-testflight",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "channel": "production",
+      "env": {
+        "APP_ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "testflight": {
+      "ios": {
+        "appleId": "rahwalton9@gmail.com",
+        "ascAppId": "6753880318",
+        "appleTeamId": "6W36XJQB7N"
+      }
+    },
+    "production": {
+      "ios": {
+        "appleId": "rahwalton9@gmail.com",
+        "ascAppId": "6753880318",
+        "appleTeamId": "6W36XJQB7N"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./secrets/playstore-service-account.json"
+      }
+    }
+  }
+}

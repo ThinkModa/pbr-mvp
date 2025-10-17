@@ -20,12 +20,13 @@ import {
 // import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
 import MapView, { Marker } from 'react-native-maps';
 // import { showLocation } from 'react-native-map-link'; // Removed - using native Linking instead
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/SupabaseAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
+import { supabase } from '../lib/supabase';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
 import { SpeakersService, EventSpeaker, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
-import { OrganizationsService, EventOrganization } from '../services/organizationsService';
+import { OrganizationsService, EventOrganization, ActivityOrganization } from '../services/organizationsService';
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
 import { RealTimeService } from '../services/realTimeService';
 // import { NotificationService } from '../services/notificationService'; // Temporarily disabled - requires native compilation
@@ -65,6 +66,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
   // Business and Organization state management
   const [eventBusinesses, setEventBusinesses] = useState<EventBusiness[]>([]);
   const [eventOrganizations, setEventOrganizations] = useState<EventOrganization[]>([]);
+  const [activityOrganizations, setActivityOrganizations] = useState<ActivityOrganization[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
   const [selectedOrganization, setSelectedOrganization] = useState<any>(null);
   
@@ -271,6 +273,8 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     setModalView('activity');
     // Load activity-specific speakers
     loadActivitySpeakers(activity.id);
+    // Load activity-specific organizations
+    loadActivityOrganizations(activity.id);
   };
 
   const handleTrackSelected = async (trackId: string) => {
@@ -390,6 +394,19 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     }
   };
 
+  // Load organizations for the current activity
+  const loadActivityOrganizations = async (activityId: string) => {
+    try {
+      console.log('Loading organizations for activity:', activityId);
+      const organizations = await OrganizationsService.getActivityOrganizations(activityId);
+      setActivityOrganizations(organizations);
+      console.log('✅ Loaded activity organizations:', organizations.length);
+    } catch (error) {
+      console.error('Error loading activity organizations:', error);
+      setActivityOrganizations([]);
+    }
+  };
+
   // Handle speaker press
   const handleSpeakerPress = (speaker: any) => {
     console.log('Speaker pressed:', speaker);
@@ -465,7 +482,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
               options: ['Cancel', 'Apple Maps', 'Google Maps'],
               cancelButtonIndex: 0,
             },
-            async (buttonIndex) => {
+            async (buttonIndex: number) => {
               if (buttonIndex === 1) {
                 // Apple Maps
                 await Linking.openURL(appleMapsUrl);
@@ -506,7 +523,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
               options: ['Cancel', 'Apple Maps', 'Google Maps'],
               cancelButtonIndex: 0,
             },
-            async (buttonIndex) => {
+            async (buttonIndex: number) => {
               if (buttonIndex === 1) {
                 await Linking.openURL(appleMapsUrl);
               } else if (buttonIndex === 2) {
@@ -1633,11 +1650,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     </View>
                   )}
 
-                  {/* Event Sponsors Section (showing event sponsors in activity view) */}
+                  {/* Activity Sponsors Section */}
                   {(() => {
-                    const sponsorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor === true);
-                    const sponsorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor === true);
-                    const totalSponsors = sponsorBusinesses.length + sponsorOrganizations.length;
+                    const sponsorOrganizations = activityOrganizations.filter(o => o.organization?.isSponsor === true);
+                    const totalSponsors = sponsorOrganizations.length;
                     
                     return totalSponsors > 0 && (
                       <View style={{ marginBottom: 20 }}>
@@ -1650,10 +1666,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                           style={{ marginBottom: 10 }}
                           contentContainerStyle={{ paddingRight: 20 }}
                         >
-                          {/* Render Sponsor Businesses */}
-                          {sponsorBusinesses.map((eventBusiness) => (
+                          {/* Render Activity Sponsor Organizations */}
+                          {sponsorOrganizations.map((activityOrg) => (
                             <TouchableOpacity
-                              key={`business-${eventBusiness.id}`}
+                              key={`activity-org-${activityOrg.id}`}
                               style={{ 
                                 backgroundColor: 'white', 
                                 padding: 15, 
@@ -1667,57 +1683,12 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                                 shadowRadius: 4,
                                 elevation: 3,
                               }}
-                              onPress={() => handleBusinessPress(eventBusiness)}
-                            >
-                              <View style={{ 
-                                width: 60, 
-                                height: 60, 
-                                borderRadius: 8, 
-                                backgroundColor: '#F3F4F6', 
-                                justifyContent: 'center', 
-                                alignItems: 'center',
-                                marginBottom: 10
-                              }}>
-                                {eventBusiness.business?.logoUrl ? (
-                                  <Image 
-                                    source={{ uri: eventBusiness.business.logoUrl }} 
-                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
-                                  />
-                                ) : (
-                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
-                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
-                                  </Text>
-                                )}
-                              </View>
-                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
-                                {eventBusiness.business?.name}
-                              </Text>
-                              {eventBusiness.sponsorshipLevel && (
-                                <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
-                                  {eventBusiness.sponsorshipLevel} Sponsor
-                                </Text>
-                              )}
-                            </TouchableOpacity>
-                          ))}
-                          
-                          {/* Render Sponsor Organizations */}
-                          {sponsorOrganizations.map((eventOrganization) => (
-                            <TouchableOpacity
-                              key={`organization-${eventOrganization.id}`}
-                              style={{ 
-                                backgroundColor: 'white', 
-                                padding: 15, 
-                                borderRadius: 12, 
-                                marginRight: 12,
-                                width: 120,
-                                alignItems: 'center',
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: 0.1,
-                                shadowRadius: 4,
-                                elevation: 3,
+                              onPress={() => {
+                                if (activityOrg.organization) {
+                                  setSelectedOrganization(activityOrg.organization);
+                                  setOrganizationModalVisible(true);
+                                }
                               }}
-                              onPress={() => handleOrganizationPress(eventOrganization)}
                             >
                               <View style={{ 
                                 width: 60, 
@@ -1728,23 +1699,23 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                                 alignItems: 'center',
                                 marginBottom: 10
                               }}>
-                                {eventOrganization.organization?.logoUrl ? (
+                                {activityOrg.organization?.logoUrl ? (
                                   <Image 
-                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    source={{ uri: activityOrg.organization.logoUrl }} 
                                     style={{ width: 60, height: 60, borderRadius: 8 }} 
                                   />
                                 ) : (
                                   <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
-                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                    {activityOrg.organization?.name?.substring(0, 2).toUpperCase()}
                                   </Text>
                                 )}
                               </View>
                               <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
-                                {eventOrganization.organization?.name}
+                                {activityOrg.organization?.name}
                               </Text>
-                              {eventOrganization.sponsorshipLevel && (
+                              {activityOrg.role && (
                                 <Text style={{ fontSize: 12, color: '#D29507', textAlign: 'center', fontWeight: '600' }}>
-                                  {eventOrganization.sponsorshipLevel} Sponsor
+                                  {activityOrg.role}
                                 </Text>
                               )}
                             </TouchableOpacity>
@@ -1754,11 +1725,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                     );
                   })()}
 
-                  {/* Event Vendors Section (showing event vendors in activity view) */}
+                  {/* Activity Vendors Section */}
                   {(() => {
-                    const vendorBusinesses = eventBusinesses.filter(b => b.business?.isSponsor !== true);
-                    const vendorOrganizations = eventOrganizations.filter(o => o.organization?.isSponsor !== true);
-                    const totalVendors = vendorBusinesses.length + vendorOrganizations.length;
+                    const vendorOrganizations = activityOrganizations.filter(o => o.organization?.isSponsor !== true);
+                    const totalVendors = vendorOrganizations.length;
                     
                     return totalVendors > 0 && (
                       <View style={{ marginBottom: 20 }}>
@@ -1771,10 +1741,10 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                           style={{ marginBottom: 10 }}
                           contentContainerStyle={{ paddingRight: 20 }}
                         >
-                          {/* Render Vendor Businesses */}
-                          {vendorBusinesses.map((eventBusiness) => (
+                          {/* Render Activity Vendor Organizations */}
+                          {vendorOrganizations.map((activityOrg) => (
                             <TouchableOpacity
-                              key={`business-${eventBusiness.id}`}
+                              key={`activity-org-${activityOrg.id}`}
                               style={{ 
                                 backgroundColor: 'white', 
                                 padding: 15, 
@@ -1788,55 +1758,12 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                                 shadowRadius: 4,
                                 elevation: 3,
                               }}
-                              onPress={() => handleBusinessPress(eventBusiness)}
-                            >
-                              <View style={{ 
-                                width: 60, 
-                                height: 60, 
-                                borderRadius: 8, 
-                                backgroundColor: '#F3F4F6', 
-                                justifyContent: 'center', 
-                                alignItems: 'center',
-                                marginBottom: 10
-                              }}>
-                                {eventBusiness.business?.logoUrl ? (
-                                  <Image 
-                                    source={{ uri: eventBusiness.business.logoUrl }} 
-                                    style={{ width: 60, height: 60, borderRadius: 8 }} 
-                                  />
-                                ) : (
-                                  <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
-                                    {eventBusiness.business?.name?.substring(0, 2).toUpperCase()}
-                                  </Text>
-                                )}
-                              </View>
-                              <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
-                                {eventBusiness.business?.name}
-                              </Text>
-                              <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
-                                Vendor
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                          
-                          {/* Render Vendor Organizations */}
-                          {vendorOrganizations.map((eventOrganization) => (
-                            <TouchableOpacity
-                              key={`organization-${eventOrganization.id}`}
-                              style={{ 
-                                backgroundColor: 'white', 
-                                padding: 15, 
-                                borderRadius: 12, 
-                                marginRight: 12,
-                                width: 120,
-                                alignItems: 'center',
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: 0.1,
-                                shadowRadius: 4,
-                                elevation: 3,
+                              onPress={() => {
+                                if (activityOrg.organization) {
+                                  setSelectedOrganization(activityOrg.organization);
+                                  setOrganizationModalVisible(true);
+                                }
                               }}
-                              onPress={() => handleOrganizationPress(eventOrganization)}
                             >
                               <View style={{ 
                                 width: 60, 
@@ -1847,19 +1774,19 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                                 alignItems: 'center',
                                 marginBottom: 10
                               }}>
-                                {eventOrganization.organization?.logoUrl ? (
+                                {activityOrg.organization?.logoUrl ? (
                                   <Image 
-                                    source={{ uri: eventOrganization.organization.logoUrl }} 
+                                    source={{ uri: activityOrg.organization.logoUrl }} 
                                     style={{ width: 60, height: 60, borderRadius: 8 }} 
                                   />
                                 ) : (
                                   <Text style={{ fontSize: 16, color: '#6B7280', fontWeight: 'bold' }}>
-                                    {eventOrganization.organization?.name?.substring(0, 2).toUpperCase()}
+                                    {activityOrg.organization?.name?.substring(0, 2).toUpperCase()}
                                   </Text>
                                 )}
                               </View>
                               <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'center', marginBottom: 4 }} numberOfLines={2}>
-                                {eventOrganization.organization?.name}
+                                {activityOrg.organization?.name}
                               </Text>
                               <Text style={{ fontSize: 12, color: '#6B7280', textAlign: 'center', fontWeight: '500' }}>
                                 Vendor

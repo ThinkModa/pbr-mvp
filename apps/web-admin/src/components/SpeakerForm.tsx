@@ -104,6 +104,15 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
     loadEvents();
   }, [speaker]);
 
+  // Load activities when assigned events change
+  useEffect(() => {
+    if (speaker && assignedEvents.length > 0) {
+      loadUpcomingActivities();
+    } else {
+      setUpcomingActivities([]);
+    }
+  }, [assignedEvents, speaker]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
@@ -279,18 +288,65 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
       backgroundColor: 'white',
       borderRadius: '8px',
       border: '1px solid #e5e7eb',
-      padding: '24px'
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
-      <h2 style={{
-        fontSize: '20px',
-        fontWeight: '600',
-        color: '#111827',
-        marginBottom: '24px'
-      }}>
-        {speaker ? 'Edit Speaker' : 'Create New Speaker'}
-      </h2>
+      <form onSubmit={handleSubmit} style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Sticky Header */}
+        <div style={{
+          padding: '20px 24px',
+          borderBottom: '1px solid #E5E7EB',
+          backgroundColor: 'white',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: 0 }}>
+            {speaker ? 'Edit Speaker' : 'Add Speaker'}
+          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#6B7280',
+                border: '1px solid #D1D5DB',
+                borderRadius: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              style={{
+                backgroundColor: isLoading ? '#9CA3AF' : '#3B82F6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: isLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {speaker ? 'Update Speaker' : 'Add Speaker'}
+            </button>
+          </div>
+        </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Scrollable Form Content */}
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {/* Basic Information */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px' }}>
           <div>
@@ -862,25 +918,8 @@ const SpeakerForm: React.FC<SpeakerFormProps> = ({ speaker, onSubmit, onCancel, 
           </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{ padding: '8px 16px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', fontWeight: '500', color: '#374151', backgroundColor: 'white', cursor: 'pointer', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isLoading}
-            style={{ padding: '8px 16px', border: '1px solid transparent', borderRadius: '6px', fontSize: '14px', fontWeight: '500', color: 'white', backgroundColor: '#3B82F6', cursor: 'pointer', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', opacity: isLoading ? 0.5 : 1 }}
-          >
-            {isLoading ? 'Saving...' : (speaker ? 'Update Speaker' : 'Create Speaker')}
-          </button>
         </div>
       </form>
-
     </div>
   );
 };

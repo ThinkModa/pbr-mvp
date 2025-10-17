@@ -12,16 +12,18 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useAuth } from '../contexts/EnhancedAuthContext';
+import { useAuth } from '../contexts/SupabaseAuthContext';
 
 interface AuthScreenProps {
   onAuthSuccess: () => void;
 }
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
-  const { signIn, signUp, signInWithGoogle, loading } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithGoogle, signInWithApple, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   
   // Form state
   const [email, setEmail] = useState('');
@@ -86,6 +88,38 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
     if (error) {
       Alert.alert('Google Sign In Failed', error.message);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setIsLoading(true);
+    const { error } = await signInWithApple();
+    setIsLoading(false);
+
+    if (error) {
+      Alert.alert('Apple Sign In Failed', error.message);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await resetPassword(resetEmail.trim());
+    setIsLoading(false);
+
+    if (error) {
+      Alert.alert('Password Reset Failed', error.message);
+    } else {
+      Alert.alert(
+        'Password Reset Email Sent',
+        'Please check your email for instructions to reset your password.',
+        [{ text: 'OK', onPress: () => setShowPasswordReset(false) }]
+      );
+      setResetEmail('');
     }
   };
 
@@ -255,6 +289,16 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               </Text>
             </TouchableOpacity>
 
+            {/* Forgot Password Link (only show on sign in) */}
+            {!isSignUp && (
+              <TouchableOpacity 
+                style={styles.forgotPasswordButton}
+                onPress={() => setShowPasswordReset(true)}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Google Sign In */}
             <TouchableOpacity
               style={styles.googleButton}
@@ -262,6 +306,15 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               disabled={isLoading}
             >
               <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </TouchableOpacity>
+
+            {/* Apple Sign In */}
+            <TouchableOpacity
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+              disabled={isLoading}
+            >
+              <Text style={styles.appleButtonText}>Continue with Apple</Text>
             </TouchableOpacity>
 
             {/* Toggle Mode */}
@@ -275,6 +328,53 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Password Reset Modal */}
+      {showPasswordReset && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter your email address and we'll send you instructions to reset your password.
+            </Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email"
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => {
+                  setShowPasswordReset(false);
+                  setResetEmail('');
+                }}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handlePasswordReset}
+                disabled={isLoading}
+              >
+                <Text style={styles.modalButtonPrimaryText}>
+                  {isLoading ? 'Sending...' : 'Send Reset Email'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -423,6 +523,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  appleButton: {
+    backgroundColor: '#000000',
+    width: '100%',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#000000',
+  },
+  appleButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   toggleButton: {
     marginTop: 10,
   },
@@ -430,6 +545,79 @@ const styles = StyleSheet.create({
     color: '#265451',
     fontSize: 14,
     textAlign: 'center',
+  },
+  forgotPasswordButton: {
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  forgotPasswordText: {
+    color: '#D29507',
+    fontSize: 14,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    margin: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#265451',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#D29507',
+  },
+  modalButtonSecondary: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D29507',
+  },
+  modalButtonPrimaryText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonSecondaryText: {
+    color: '#D29507',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
