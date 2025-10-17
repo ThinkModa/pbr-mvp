@@ -2,8 +2,8 @@ import { supabase, getServiceRoleClient } from '../lib/supabase';
 
 // Use any for now to avoid type issues
 type Event = any;
-type EventInsert = any;
-type EventUpdate = any;
+// type EventInsert = any;
+// type EventUpdate = any;
 type Activity = any;
 type ActivityInsert = any;
 

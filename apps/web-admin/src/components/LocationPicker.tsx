@@ -18,7 +18,7 @@ interface LocationPickerProps {
 }
 
 // Google Places API configuration
-const GOOGLE_PLACES_API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY || '';
+const GOOGLE_PLACES_API_KEY = (import.meta as any).env.VITE_GOOGLE_PLACES_API_KEY || '';
 
 declare global {
   interface Window {
