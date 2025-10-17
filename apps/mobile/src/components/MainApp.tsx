@@ -16,8 +16,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  ActionSheetIOS,
 } from 'react-native';
-// import * as ImagePicker from 'expo-image-picker'; // Temporarily disabled - requires native compilation
+import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
 // import { showLocation } from 'react-native-map-link'; // Removed - using native Linking instead
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -2249,13 +2250,74 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - ImagePicker requires native compilation
-    Alert.alert('Feature Disabled', 'Image upload is temporarily disabled in Expo Go. This feature will be available in the production build.');
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+          title: 'Select Profile Picture',
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            openImagePicker('camera');
+          } else if (buttonIndex === 2) {
+            openImagePicker('library');
+          }
+        }
+      );
+    } else {
+      // Android - show simple alert for now
+      Alert.alert(
+        'Select Photo',
+        'Choose an option',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: () => openImagePicker('camera') },
+          { text: 'Choose from Library', onPress: () => openImagePicker('library') },
+        ]
+      );
+    }
   };
 
-  // const openImagePicker = async (source: 'camera' | 'library') => {
-  //   // Temporarily disabled - ImagePicker requires native compilation
-  // };
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      // Request permissions
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+        return;
+      }
+
+      // Configure image picker options
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      let result;
+      if (source === 'camera') {
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraPermission.granted === false) {
+          Alert.alert('Permission Required', 'Permission to access camera is required!');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        await uploadProfileImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
@@ -2613,12 +2675,9 @@ const ProfileEditModal: React.FC<{
 
       console.log('✅ Profile saved successfully');
       
-      // Verify the update worked by re-fetching the profile
-      console.log('Verifying profile update...');
-      const updatedProfile = await ProfileService.getUserProfile(formData.id);
-      console.log('✅ Verified updated profile:', updatedProfile);
-      
-      onSave(updatedProfile);
+      // Call onSave with the current formData instead of re-fetching
+      // This avoids potential race conditions with database consistency
+      onSave(formData);
     } catch (error) {
       console.error('Error saving profile:', error);
       Alert.alert('Error', 'Failed to save profile. Please try again.');
@@ -2632,13 +2691,74 @@ const ProfileEditModal: React.FC<{
   };
 
   const handleImageUpload = async () => {
-    // Temporarily disabled - ImagePicker requires native compilation
-    Alert.alert('Feature Disabled', 'Image upload is temporarily disabled in Expo Go. This feature will be available in the production build.');
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+          title: 'Select Profile Picture',
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            openImagePicker('camera');
+          } else if (buttonIndex === 2) {
+            openImagePicker('library');
+          }
+        }
+      );
+    } else {
+      // Android - show simple alert for now
+      Alert.alert(
+        'Select Photo',
+        'Choose an option',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: () => openImagePicker('camera') },
+          { text: 'Choose from Library', onPress: () => openImagePicker('library') },
+        ]
+      );
+    }
   };
 
-  // const openImagePicker = async (source: 'camera' | 'library') => {
-  //   // Temporarily disabled - ImagePicker requires native compilation
-  // };
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      // Request permissions
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+        return;
+      }
+
+      // Configure image picker options
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      let result;
+      if (source === 'camera') {
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraPermission.granted === false) {
+          Alert.alert('Permission Required', 'Permission to access camera is required!');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        await uploadProfileImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
