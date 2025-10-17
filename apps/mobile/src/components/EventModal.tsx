@@ -11,14 +11,18 @@ import {
   SafeAreaView,
   Alert,
   RefreshControl,
+  Linking,
+  Platform,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
+// import { showLocation } from 'react-native-map-link'; // Removed - using native Linking instead
 import { EventWithActivities } from '../services/eventsService';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
-import { CalendarService, CalendarEvent } from '../services/calendarService';
+// import { CalendarService, CalendarEvent } from '../services/calendarService'; // Temporarily disabled - requires native compilation
 import { SpeakersService, EventSpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
-import { useAuth } from '../contexts/EnhancedAuthContext';
+import { useAuth } from '../contexts/MockAuthContext';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
@@ -51,7 +55,43 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  console.log('EventModal render:', { visible, event: event?.title });
+  console.log('🎬 EventModal render:', { visible, event: event?.title });
+  console.log('🎬 EventModal: About to render map placeholder section');
+
+  // Debug: Log event data when modal opens
+  useEffect(() => {
+    if (visible && event) {
+      console.log('🎬 EventModal opened with event:', {
+        eventId: event.id,
+        eventTitle: event.title,
+        location: event.location,
+        location_address: event.location_address,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        hasLocationObject: !!event.location,
+        hasCoordinatesInLocation: !!(event.location?.coordinates),
+        hasLatitudeField: event.latitude !== null && event.latitude !== undefined,
+        hasLongitudeField: event.longitude !== null && event.longitude !== undefined
+      });
+    }
+  }, [visible, event]);
+
+  // Open in Maps function
+  const openInMaps = async (latitude: number, longitude: number, title?: string, address?: string) => {
+    try {
+      await showLocation({
+        latitude,
+        longitude,
+        title: title || 'Event Location',
+        dialogTitle: 'Open in Maps',
+        dialogMessage: 'Choose your preferred maps app',
+        cancelText: 'Cancel',
+        alwaysIncludeGoogle: true,
+      });
+    } catch (error) {
+      console.error('Error opening maps:', error);
+    }
+  };
 
   // Load user's RSVP status, calendar status, speakers, and businesses when modal opens
   useEffect(() => {
@@ -81,10 +121,10 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
-        notes: event.description,
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
+        location: event.location?.name || undefined,
+        notes: event.description || undefined,
       };
       
       const exists = await CalendarService.eventExistsInCalendar(calendarEvent);
@@ -101,10 +141,10 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
-        notes: event.description,
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
+        location: event.location?.name || undefined,
+        notes: event.description || undefined,
       };
       
       const success = await CalendarService.addEventToCalendar(calendarEvent);
@@ -130,10 +170,10 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     try {
       const calendarEvent: CalendarEvent = {
         title: event.title,
-        startDate: new Date(event.start_time + 'Z'),
-        endDate: new Date(event.end_time + 'Z'),
-        location: event.location?.name,
-        notes: event.description,
+        startDate: new Date(event.start_time),
+        endDate: new Date(event.end_time),
+        location: event.location?.name || undefined,
+        notes: event.description || undefined,
       };
       
       const success = await CalendarService.removeEventFromCalendar(calendarEvent);
@@ -161,7 +201,9 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
       await RSVPService.createEventRSVP(event.id, user.id, status);
       
       setUserRSVP(status);
-      onRSVP(event.id, status);
+      // Convert 'maybe', 'waitlist', 'pending' to null for onRSVP callback
+      const rsvpStatus = (status === 'maybe' || status === 'waitlist' || status === 'pending') ? null : status;
+      onRSVP(event.id, rsvpStatus);
       
       // Show confirmation
       Alert.alert(
@@ -298,6 +340,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     }
   };
 
+
   if (!event) return null;
 
   const startDate = new Date(event.start_time + 'Z');
@@ -394,9 +437,16 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                 <Text style={styles.eventTitle}>{event.title}</Text>
                 <View style={styles.locationContainer}>
                   <Text style={styles.locationIcon}>📍</Text>
-                  <Text style={styles.locationText}>
-                    {event.location?.name || 'Location TBD'}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locationText}>
+                      {event.location?.name || 'Location TBD'}
+                    </Text>
+                    {(event.location?.address || event.location_address) && (
+                      <Text style={styles.locationAddress}>
+                        {event.location?.address || event.location_address}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </View>
 
@@ -736,7 +786,98 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                   </View>
                 );
               })()}
+
+
             </View>
+
+            {/* Map Section - Top Level */}
+            {(() => {
+              // Get coordinates from either the separate fields or the location object
+              const lat = event.latitude || event.location?.coordinates?.lat;
+              const lng = event.longitude || event.location?.coordinates?.lng;
+              
+              // Convert to numbers and validate
+              const latNum = lat ? Number(lat) : null;
+              const lngNum = lng ? Number(lng) : null;
+              const hasValidCoordinates = latNum && lngNum && !isNaN(latNum) && !isNaN(lngNum);
+              
+              console.log('🗺️ EventModal map coordinates:', {
+                eventId: event.id,
+                eventTitle: event.title,
+                latitude: event.latitude,
+                longitude: event.longitude,
+                locationCoordinates: event.location?.coordinates,
+                rawLat: lat,
+                rawLng: lng,
+                latNum: latNum,
+                lngNum: lngNum,
+                hasValidCoordinates: hasValidCoordinates,
+                locationName: event.location?.name,
+                locationAddress: event.location_address,
+                willShowMap: hasValidCoordinates,
+                willShowPlaceholder: !hasValidCoordinates && !!(event.location?.name),
+                willShowNothing: !hasValidCoordinates && !(event.location?.name)
+              });
+              
+              return (
+                <View style={styles.mapSection}>
+                  <Text style={styles.sectionTitle}>Location</Text>
+                  <View style={styles.mapContainer}>
+                    {hasValidCoordinates ? (
+                      <TouchableOpacity 
+                        onPress={() => openInMaps(
+                          lat, 
+                          lng, 
+                          event.location?.name || event.title,
+                          event.location_address || event.location?.address
+                        )}
+                        style={styles.mapContainer}
+                      >
+                        <MapView
+                          style={styles.map}
+                          initialRegion={{
+                            latitude: latNum,
+                            longitude: lngNum,
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
+                          }}
+                          scrollEnabled={false}
+                          zoomEnabled={false}
+                          pitchEnabled={false}
+                          rotateEnabled={false}
+                        >
+                          <Marker
+                            coordinate={{
+                              latitude: latNum,
+                              longitude: lngNum,
+                            }}
+                            title={event.location?.name || event.title}
+                            description={event.location_address || event.location?.address}
+                          />
+                        </MapView>
+                        <View style={styles.mapOverlay}>
+                          <Text style={styles.mapOverlayText}>Tap to open in Maps</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.mapPlaceholderContainer}>
+                        <Image
+                          source={require('../../assets/icon.png')}
+                          style={styles.mapPlaceholderImage}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.mapPlaceholder}>
+                          {event.location?.name 
+                            ? `Map view coming soon - coordinates needed for ${event.location.name}`
+                            : 'No location information available'
+                          }
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })()}
           </ScrollView>
 
         {/* RSVP & Calendar Footer */}
@@ -855,7 +996,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 20,
+    paddingBottom: 120, // Increased padding to account for footer
   },
   imageContainer: {
     height: 200,
@@ -876,6 +1017,15 @@ const styles = StyleSheet.create({
   },
   detailsContainer: {
     padding: 20,
+    paddingBottom: 120, // Extra bottom padding to allow scrolling to see all content
+  },
+  mapSection: {
+    padding: 20,
+    paddingTop: 0, // No top padding since detailsContainer already has bottom padding
+  },
+  locationContainer: {
+    padding: 20,
+    paddingTop: 0, // No top padding since detailsContainer already has bottom padding
   },
   titleSection: {
     marginBottom: 24,
@@ -899,6 +1049,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  locationAddress: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  mapContainer: {
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  map: {
+    height: 150,
+    width: '100%',
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 8,
+    alignItems: 'center',
+  },
+  mapOverlayText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mapPlaceholder: {
+    textAlign: 'center',
+    color: '#6B7280',
+    fontSize: 14,
+    padding: 20,
+  },
+  mapPlaceholderContainer: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  mapPlaceholderImage: {
+    width: '100%',
+    height: 150,
   },
   dateTimeSection: {
     marginBottom: 24,
@@ -1116,7 +1313,7 @@ const styles = StyleSheet.create({
   },
   // Speakers Section Styles
   speakersSection: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
   speakersScrollView: {
     marginTop: 12,

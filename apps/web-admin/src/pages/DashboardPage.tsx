@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Speaker, CreateSpeakerData, UpdateSpeakerData, SpeakersService } from '../services/speakersService';
 import { Organization, CreateOrganizationData, UpdateOrganizationData, OrganizationsService } from '../services/organizationsService';
 import { EventsService, EventWithActivities } from '../services/eventsService';
-import { supabase } from '../lib/supabase';
+// import { supabase } from '../lib/supabase'; // Unused
 import SpeakerCard from '../components/SpeakerCard';
 import SpeakerListCard from '../components/SpeakerListCard';
 import SpeakerForm from '../components/SpeakerForm';
@@ -15,7 +15,7 @@ import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
 import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
 import ManualUserCreation from '../components/ManualUserCreation';
-import { UserRoleManagement } from '../components/UserRoleManagement';
+// import { UserRoleManagement } from '../components/UserRoleManagement'; // Unused
 
 // Activity categories with colors and icons
 const ACTIVITY_CATEGORIES = [
@@ -29,32 +29,454 @@ const ACTIVITY_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
 ];
 
-// Generate time options in 15-minute increments with 12-hour format (8am to 9pm only)
-const generateTimeOptions = () => {
-  const times = [];
-  for (let hour = 8; hour <= 21; hour++) { // 8am to 9pm (21:00)
-    for (let minute = 0; minute < 60; minute += 15) {
-      const date = new Date();
-      date.setHours(hour, minute, 0, 0);
-      
-      const time12Hour = date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-      
-      const time24Hour = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      
-      times.push({
-        label: time12Hour,
-        value: time24Hour
-      });
-    }
+// Time options in 30-minute increments from 8:00 AM to 9:00 PM
+const TIME_OPTIONS = [
+  '8:00 AM', '8:30 AM',
+  '9:00 AM', '9:30 AM',
+  '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM',
+  '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM',
+  '3:00 PM', '3:30 PM',
+  '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM',
+  '6:00 PM', '6:30 PM',
+  '7:00 PM', '7:30 PM',
+  '8:00 PM', '8:30 PM',
+  '9:00 PM'
+];
+
+// Helper function to convert 12-hour format to 24-hour format for database
+const convertTo24Hour = (time12Hour: string): string => {
+  if (!time12Hour) return '';
+  
+  const [time, period] = time12Hour.split(' ');
+  const [hours, minutes] = time.split(':');
+  
+  let hour24 = parseInt(hours);
+  
+  if (period === 'PM' && hour24 !== 12) {
+    hour24 += 12;
+  } else if (period === 'AM' && hour24 === 12) {
+    hour24 = 0;
   }
-  return times;
+  
+  return `${hour24.toString().padStart(2, '0')}:${minutes}`;
 };
 
-const TIME_OPTIONS = generateTimeOptions();
+// Helper function to convert 24-hour format to 12-hour format for display
+const convertTo12Hour = (time24Hour: string): string => {
+  if (!time24Hour) return '';
+  
+  const [hours, minutes] = time24Hour.split(':');
+  const hour24 = parseInt(hours);
+  
+  let hour12 = hour24;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  
+  if (hour24 === 0) {
+    hour12 = 12;
+  } else if (hour24 > 12) {
+    hour12 = hour24 - 12;
+  }
+  
+  return `${hour12}:${minutes} ${period}`;
+};
+
+// Helper function to format date in friendly format
+const formatFriendlyDate = (dateString: string): string => {
+  if (!dateString) return '';
+  
+  const date = new Date(dateString);
+  
+  // Format as "Mon, Jun 17, 2025" (abbreviated weekday, abbreviated month, day, year)
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
+// Modern Calendar Component
+const ModernCalendar: React.FC<{
+  selectedDate: string;
+  onDateSelect: (date: string) => void;
+  onClose: () => void;
+}> = ({ selectedDate, onDateSelect, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+
+  const today = new Date();
+  const selectedDateObj = selectedDate ? new Date(selectedDate) : today;
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    
+    // Add previous month's trailing days
+    const prevMonth = new Date(year, month - 1, 0);
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        date: prevMonth.getDate() - i,
+        isCurrentMonth: false,
+        isToday: false,
+        isSelected: false,
+        fullDate: new Date(year, month - 1, prevMonth.getDate() - i).toISOString().split('T')[0]
+      });
+    }
+
+    // Add current month's days
+    for (let day = 1; day <= daysInMonth; day++) {
+      const fullDate = new Date(year, month, day).toISOString().split('T')[0];
+      days.push({
+        date: day,
+        isCurrentMonth: true,
+        isToday: fullDate === today.toISOString().split('T')[0],
+        isSelected: fullDate === selectedDate,
+        fullDate
+      });
+    }
+
+    // Add next month's leading days
+    const remainingDays = 42 - days.length; // 6 weeks * 7 days
+    for (let day = 1; day <= remainingDays; day++) {
+      days.push({
+        date: day,
+        isCurrentMonth: false,
+        isToday: false,
+        isSelected: false,
+        fullDate: new Date(year, month + 1, day).toISOString().split('T')[0]
+      });
+    }
+
+    return days;
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newMonth = new Date(prev);
+      if (direction === 'prev') {
+        newMonth.setMonth(prev.getMonth() - 1);
+      } else {
+        newMonth.setMonth(prev.getMonth() + 1);
+      }
+      return newMonth;
+    });
+  };
+
+  const formatMonthYear = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const days = getDaysInMonth(currentMonth);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '24px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        width: '90%',
+        maxWidth: '400px',
+        maxHeight: '90vh',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '20px'
+        }}>
+          <button
+            onClick={() => navigateMonth('prev')}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              color: '#6B7280',
+              cursor: 'pointer',
+              padding: '8px'
+            }}
+          >
+            ‹
+          </button>
+          <h3 style={{
+            margin: 0,
+            fontSize: '18px',
+            fontWeight: '600',
+            color: '#111827'
+          }}>
+            {formatMonthYear(currentMonth)}
+          </h3>
+          <button
+            onClick={() => navigateMonth('next')}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              color: '#6B7280',
+              cursor: 'pointer',
+              padding: '8px'
+            }}
+          >
+            ›
+          </button>
+        </div>
+
+        {/* Days of week */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: '4px',
+          marginBottom: '8px'
+        }}>
+          {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(day => (
+            <div key={day} style={{
+              textAlign: 'center',
+              fontSize: '12px',
+              fontWeight: '500',
+              color: '#6B7280',
+              padding: '8px 4px'
+            }}>
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: '4px',
+          marginBottom: '20px'
+        }}>
+          {days.map((day, index) => (
+            <button
+              key={index}
+              onClick={() => {
+                if (day.isCurrentMonth) {
+                  onDateSelect(day.fullDate);
+                }
+              }}
+              onMouseEnter={() => setHoveredDate(day.fullDate)}
+              onMouseLeave={() => setHoveredDate(null)}
+              style={{
+                aspectRatio: '1',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: day.isCurrentMonth ? 'pointer' : 'default',
+                backgroundColor: day.isSelected 
+                  ? '#8B5CF6' 
+                  : day.isToday 
+                    ? '#F3F4F6' 
+                    : hoveredDate === day.fullDate && day.isCurrentMonth
+                      ? '#F3F4F6'
+                      : 'transparent',
+                color: day.isSelected 
+                  ? 'white' 
+                  : day.isCurrentMonth 
+                    ? '#111827' 
+                    : '#D1D5DB',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {day.date}
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingTop: '16px',
+          borderTop: '1px solid #E5E7EB'
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6B7280',
+              fontSize: '14px',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Cancel
+          </button>
+          <div style={{
+            fontSize: '14px',
+            color: '#111827',
+            fontWeight: '500'
+          }}>
+            {selectedDateObj.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })}
+          </div>
+          <button
+            onClick={() => onClose()}
+            style={{
+              backgroundColor: '#8B5CF6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Select
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modern Time Picker Component
+const ModernTimePicker: React.FC<{
+  selectedTime: string;
+  onTimeSelect: (time: string) => void;
+  onClose: () => void;
+}> = ({ selectedTime, onTimeSelect, onClose }) => {
+  const [hoveredTime, setHoveredTime] = useState<string | null>(null);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '24px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        width: '90%',
+        maxWidth: '300px',
+        maxHeight: '90vh',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <h3 style={{
+          margin: '0 0 20px 0',
+          fontSize: '18px',
+          fontWeight: '600',
+          color: '#111827',
+          textAlign: 'center'
+        }}>
+          Select Time
+        </h3>
+
+        {/* Time options */}
+        <div style={{
+          maxHeight: '300px',
+          overflowY: 'auto',
+          marginBottom: '20px'
+        }}>
+          {TIME_OPTIONS.map(time => (
+            <button
+              key={time}
+              onClick={() => {
+                onTimeSelect(time);
+                onClose();
+              }}
+              onMouseEnter={() => setHoveredTime(time)}
+              onMouseLeave={() => setHoveredTime(null)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                backgroundColor: selectedTime === time 
+                  ? '#F3F4F6' 
+                  : hoveredTime === time 
+                    ? '#F9FAFB' 
+                    : 'transparent',
+                color: selectedTime === time 
+                  ? '#8B5CF6' 
+                  : '#111827',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+                marginBottom: '4px'
+              }}
+            >
+              {time}
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingTop: '16px',
+          borderTop: '1px solid #E5E7EB'
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#6B7280',
+              fontSize: '14px',
+              cursor: 'pointer',
+              padding: '8px 16px'
+            }}
+          >
+            Cancel
+          </button>
+          <div style={{
+            fontSize: '14px',
+            color: '#111827',
+            fontWeight: '500'
+          }}>
+            {selectedTime || 'No time selected'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface Activity {
   name: string;
@@ -63,7 +485,12 @@ interface Activity {
   startTime: string;
   endDate: string;
   endTime: string;
-  location: string;
+  location: {
+    name: string;
+    address?: string;
+    coordinates?: { lat: number; lng: number; };
+    placeId?: string;
+  } | string; // Allow string for backward compatibility during edit
   category: string;
   capacity?: number;
   isRequired: boolean;
@@ -103,9 +530,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   const [showCreateEventForm, setShowCreateEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithActivities | null>(null);
   const [selectedEventForTracks, setSelectedEventForTracks] = useState<EventWithActivities | null>(null);
+  
+  // Modern picker states
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  
+  // Activity picker states
+  const [activityPickerStates, setActivityPickerStates] = useState<{
+    [key: string]: {
+      showStartDate: boolean;
+      showStartTime: boolean;
+      showEndDate: boolean;
+      showEndTime: boolean;
+    }
+  }>({});
+
+  // Helper functions for activity picker states
+  const setActivityPickerState = (activityIndex: number, pickerType: 'showStartDate' | 'showStartTime' | 'showEndDate' | 'showEndTime', value: boolean) => {
+    setActivityPickerStates(prev => ({
+      ...prev,
+      [activityIndex]: {
+        ...prev[activityIndex],
+        [pickerType]: value
+      }
+    }));
+  };
+
+  const getActivityPickerState = (activityIndex: number, pickerType: 'showStartDate' | 'showStartTime' | 'showEndDate' | 'showEndTime'): boolean => {
+    return activityPickerStates[activityIndex]?.[pickerType] || false;
+  };
   // Users state
   const [users, setUsers] = useState<any[]>([]);
-  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  // const [pendingUsers, // setPendingUsers] = useState<any[]>([]); // Unused
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [usersView, setUsersView] = useState<'list' | 'bulk-import' | 'role-management'>('list');
@@ -144,17 +602,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     showAttendeeCount: true,
     hasTracks: false,
     coverImageUrl: '',
+    status: 'published' as 'draft' | 'published' | 'cancelled' | 'completed',
   });
 
   // Image upload state
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  // const [imageFile, // setImageFile] = useState<File | null>(null); // Unused
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [eventSpeakers, setEventSpeakers] = useState<string[]>([]);
-  const [eventBusinesses, setEventBusinesses] = useState<string[]>([]);
+  // const [eventSpeakers, // setEventSpeakers] = useState<string[]>([]); // Unused
+  // const [eventBusinesses, // setEventBusinesses] = useState<string[]>([]); // Unused
 
   // Load speakers when speakers view is selected
   useEffect(() => {
@@ -349,10 +808,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const now = new Date();
       const upcoming = eventsData
         .filter(event => {
-          const eventDate = new Date(event.start_date);
+          const eventDate = new Date(event.start_date || '');
           return eventDate > now;
         })
-        .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime())
+        .sort((a, b) => new Date(a.start_date || '').getTime() - new Date(b.start_date || '').getTime())
         .slice(0, 3);
       
       setUpcomingEvents(upcoming);
@@ -437,24 +896,27 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     setEditingEvent(event);
     
     // Parse datetime strings into separate date and time
-    const startDateTime = new Date(event.start_time);
-    const endDateTime = new Date(event.end_time);
+    const startDateTime = new Date(event.start_date || '');
+    const endDateTime = new Date(event.end_date || '');
     
     setEventFormData({
-      name: event.title,
+      name: event.name || '',
       description: event.description,
       startDate: startDateTime.toISOString().split('T')[0],
-      startTime: startDateTime.toTimeString().slice(0, 5),
+      startTime: convertTo12Hour(startDateTime.toTimeString().slice(0, 5)),
       endDate: endDateTime.toISOString().split('T')[0],
-      endTime: endDateTime.toTimeString().slice(0, 5),
-      location: event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
+      endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
+      location: typeof event.location === 'string' 
+        ? { name: event.location, address: event.location, coordinates: undefined, placeId: undefined }
+        : event.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
       capacity: event.max_capacity?.toString() || '',
       price: event.price ? (event.price / 100).toString() : '',
-      showCapacity: event.show_capacity,
-      showPrice: event.show_price,
-      showAttendeeCount: event.show_attendee_count,
-      hasTracks: event.has_tracks,
+      showCapacity: event.show_capacity ?? true,
+      showPrice: event.show_price ?? true,
+      showAttendeeCount: event.show_attendee_count ?? true,
+      hasTracks: event.has_tracks ?? false,
       coverImageUrl: event.cover_image_url || '',
+      status: (event as any).status || 'published',
     });
     
     // Set image preview for existing images
@@ -471,17 +933,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         name: activity.title,
         description: activity.description || '',
         startDate: startDateTime.toISOString().split('T')[0],
-        startTime: startDateTime.toTimeString().slice(0, 5),
+        startTime: convertTo12Hour(startDateTime.toTimeString().slice(0, 5)),
         endDate: endDateTime.toISOString().split('T')[0],
-        endTime: endDateTime.toTimeString().slice(0, 5),
+        endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
         location: activity.location?.name || '',
         category: 'other', // Default category
         capacity: activity.max_capacity?.toString() || '',
         isRequired: activity.is_required
       };
     }));
-    setEventSpeakers([]);
-    setEventBusinesses([]);
+    // setEventSpeakers([]);
+    // setEventBusinesses([]);
     setShowCreateEventForm(true);
   };
 
@@ -507,11 +969,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       showAttendeeCount: true,
       hasTracks: false,
       coverImageUrl: '',
+      status: 'published',
     });
     setActivities([]);
-    setEventSpeakers([]);
-    setEventBusinesses([]);
-    setImageFile(null);
+    // setEventSpeakers([]);
+    // setEventBusinesses([]);
+    // setImageFile(null);
     setImagePreview('');
   };
 
@@ -525,8 +988,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const eventData = {
         name: eventFormData.name,
         description: eventFormData.description,
-        start_date: `${eventFormData.startDate}T${eventFormData.startTime}:00`,
-        end_date: `${eventFormData.endDate}T${eventFormData.endTime}:00`,
+        start_date: `${eventFormData.startDate}T${convertTo24Hour(eventFormData.startTime)}:00`,
+        end_date: `${eventFormData.endDate}T${convertTo24Hour(eventFormData.endTime)}:00`,
         location: eventFormData.location,
         capacity: eventFormData.capacity ? parseInt(eventFormData.capacity) : undefined,
         price: eventFormData.price ? parseFloat(eventFormData.price) : undefined,
@@ -535,19 +998,42 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         show_attendee_count: eventFormData.showAttendeeCount,
         has_tracks: eventFormData.hasTracks,
         cover_image_url: eventFormData.coverImageUrl,
+        status: eventFormData.status,
         activities: activities
           .filter(activity => activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime)
           .map(activity => ({
             name: activity.name,
             description: activity.description,
-            start_time: `${activity.startDate}T${activity.startTime}:00`,
-            end_time: `${activity.endDate}T${activity.endTime}:00`,
+            start_time: `${activity.startDate}T${convertTo24Hour(activity.startTime)}:00`,
+            end_time: `${activity.endDate}T${convertTo24Hour(activity.endTime)}:00`,
             location: activity.location,
             category: activity.category,
             capacity: activity.capacity,
             is_required: activity.isRequired,
           })),
       };
+
+      // 🔍 DEBUG: Log complete event data being sent
+      console.log('📤 DashboardPage: Complete event data being sent:', {
+        eventData,
+        locationDetails: {
+          location: eventData.location,
+          hasCoordinates: !!eventData.location?.coordinates,
+          latitude: eventData.location?.coordinates?.lat,
+          longitude: eventData.location?.coordinates?.lng,
+          address: eventData.location?.address,
+          name: eventData.location?.name,
+          placeId: eventData.location?.placeId
+        },
+        activitiesCount: eventData.activities?.length || 0,
+        activitiesWithLocations: eventData.activities?.map(activity => ({
+          name: activity.name,
+          location: activity.location,
+          hasCoordinates: !!(typeof activity.location === 'object' && activity.location?.coordinates),
+          latitude: typeof activity.location === 'object' ? activity.location?.coordinates?.lat : undefined,
+          longitude: typeof activity.location === 'object' ? activity.location?.coordinates?.lng : undefined
+        })) || []
+      });
 
       if (editingEvent) {
         await handleUpdateEvent(editingEvent.id, eventData);
@@ -573,7 +1059,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       return;
     }
 
-    setImageFile(file);
+    // setImageFile(file);
     
     // Create preview URL
     const previewUrl = URL.createObjectURL(file);
@@ -584,7 +1070,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     try {
       const imageUrl = await ImageUploadService.uploadImage(file, 'events');
       setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
-      setImageFile(null);
+      // setImageFile(null);
       setImagePreview('');
       
       // Clear the file input
@@ -602,27 +1088,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   };
 
   const handleRemoveImage = () => {
-    setImageFile(null);
+    // setImageFile(null);
     setImagePreview('');
     setEventFormData(prev => ({ ...prev, coverImageUrl: '' }));
   };
 
-  const handleUploadImage = async () => {
-    if (!imageFile) return;
-
-    try {
-      setUploadingImage(true);
-      const imageUrl = await ImageUploadService.uploadImage(imageFile);
-      setEventFormData(prev => ({ ...prev, coverImageUrl: imageUrl }));
-      setImageFile(null);
-      setImagePreview('');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      setEventsError('Failed to upload image');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
+  // const handleUploadImage = async () => { // Unused function
+  //   if (!imageFile) return;
+  //   // ... function body removed
+  // };
 
   const addActivity = () => {
     setActivities([...activities, {
@@ -712,7 +1186,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       console.log('🔄 Refreshing pending users list...');
       const pending = await BulkImportService.getPendingUsers();
       console.log('👥 Retrieved pending users:', pending.length);
-      setPendingUsers(pending);
+      // setPendingUsers(pending);
     } catch (err) {
       console.error('❌ Import failed:', err);
       setImportError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -721,22 +1195,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     }
   };
 
-  const handleSendInvitations = async (userIds: string[]) => {
-    setImportLoading(true);
-    setImportError('');
-    
-    try {
-      await BulkImportService.sendInvitations(userIds);
-      
-      // Refresh pending users list
-      const pending = await BulkImportService.getPendingUsers();
-      setPendingUsers(pending);
-    } catch (err) {
-      setImportError(`Failed to send invitations: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setImportLoading(false);
-    }
-  };
+  // const handleSendInvitations = async (userIds: string[]) => { // Unused function
+  //   setImportLoading(true);
+  //   setImportError('');
+  //   // ... function body removed
+  // };
 
   const resetImport = () => {
     setImportStep('upload');
@@ -842,7 +1305,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     e.currentTarget.style.color = '#6b7280';
                   }}
                 >
-                  {event.title}
+                  {event.name || 'Untitled Event'}
                 </div>
               ))
             )}
@@ -1294,7 +1757,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     }}>
                       <SpeakerForm
                         speaker={editingSpeaker || undefined}
-                        onSubmit={editingSpeaker ? handleUpdateSpeaker : handleCreateSpeaker}
+                        onSubmit={editingSpeaker ? handleUpdateSpeaker as any : handleCreateSpeaker as any}
                         onCancel={handleCancelSpeakerForm}
                         isLoading={speakerFormLoading}
                       />
@@ -1661,7 +2124,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     }}>
                       <OrganizationForm
                         organization={editingOrganization || undefined}
-                        onSubmit={editingOrganization ? handleUpdateOrganization : handleCreateOrganization}
+                        onSubmit={editingOrganization ? handleUpdateOrganization as any : handleCreateOrganization as any}
                         onCancel={handleCancelOrganizationForm}
                         isLoading={organizationFormLoading}
                       />
@@ -2376,14 +2839,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                             <div style={{ flex: 1 }}>
                               <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
-                                {event.title}
+                                {event.name || 'Untitled Event'}
                               </h3>
                               <p style={{ color: '#6B7280', marginBottom: '12px' }}>
                                 {event.description}
                               </p>
                               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280', flexWrap: 'wrap' }}>
-                                <span>📅 {new Date(event.start_time).toLocaleDateString()}</span>
-                                <span>📍 {event.location?.name || 'Location TBD'}</span>
+                                <span>📅 {formatFriendlyDate(event.start_date || '')}</span>
+                                <span>📍 {typeof event.location === 'string' ? event.location : (event.location as any)?.name || 'Location TBD'}</span>
                                 {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
                                 {event.price && <span>💰 ${event.price / 100}</span>}
                                 {event.has_tracks && (
@@ -2521,29 +2984,83 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
             width: '90%',
             maxWidth: '800px',
             maxHeight: '90vh',
-            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
           }}>
-            <div style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>
+            {/* Sticky Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #E5E7EB',
+              backgroundColor: 'white',
+              borderRadius: '12px 12px 0 0',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: 0 }}>
                   {editingEvent ? 'Edit Event' : 'Create Event'}
                 </h2>
-                <button
-                  onClick={handleCancelEventForm}
-                  style={{
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    fontSize: '24px',
-                    cursor: 'pointer',
-                    color: '#6B7280'
-                  }}
-                >
-                  ×
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    onClick={handleCancelEventForm}
+                    style={{
+                      backgroundColor: '#F3F4F6',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    form="event-form"
+                    disabled={eventsLoading}
+                    style={{
+                      backgroundColor: eventsLoading ? '#9CA3AF' : '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: eventsLoading ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {editingEvent ? 'Update Event' : 'Create Event'}
+                  </button>
+                  <button
+                    onClick={handleCancelEventForm}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      fontSize: '24px',
+                      cursor: 'pointer',
+                      color: '#6B7280',
+                      padding: '4px',
+                      marginLeft: '8px'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
+            </div>
 
-              <form onSubmit={handleEventSubmit}>
+            {/* Scrollable Content */}
+            <div style={{ 
+              padding: '24px',
+              overflowY: 'auto',
+              flex: 1
+            }}>
+
+              <form id="event-form" onSubmit={handleEventSubmit}>
                 <div style={{ display: 'grid', gap: '24px' }}>
                   {/* Event Cover Image */}
                   <div>
@@ -2656,84 +3173,88 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
                   {/* Date and Time */}
                   {/* Start Date & Time */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                      Start Date & Time *
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <input
-                        type="date"
-                        value={eventFormData.startDate}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                        required={!editingEvent}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
-                        }}
-                      />
-                      <select
-                        value={eventFormData.startTime}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                        required={!editingEvent}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
-                        }}
-                      >
-                        <option value="">Select start time</option>
-                        {TIME_OPTIONS.map(time => (
-                          <option key={time.value} value={time.value}>
-                            {time.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                 <div>
+                   <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                     Start Date & Time *
+                   </label>
+                   <div style={{ display: 'flex', gap: '12px' }}>
+                     <button
+                       type="button"
+                       onClick={() => setShowStartDatePicker(true)}
+                       style={{
+                         flex: 1,
+                         padding: '8px 12px',
+                         border: '1px solid #D1D5DB',
+                         borderRadius: '6px',
+                         fontSize: '14px',
+                         minWidth: '150px',
+                         backgroundColor: 'white',
+                         cursor: 'pointer',
+                         textAlign: 'left'
+                       }}
+                     >
+                       {eventFormData.startDate ? formatFriendlyDate(eventFormData.startDate) : 'Select date'}
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => setShowStartTimePicker(true)}
+                       style={{
+                         flex: 1,
+                         minWidth: '150px',
+                         padding: '8px 12px',
+                         border: '1px solid #D1D5DB',
+                         borderRadius: '6px',
+                         fontSize: '14px',
+                         backgroundColor: 'white',
+                         cursor: 'pointer',
+                         textAlign: 'left'
+                       }}
+                     >
+                       {eventFormData.startTime || 'Select time'}
+                     </button>
+                   </div>
+                 </div>
 
                   {/* End Date & Time */}
                   <div>
                     <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
                       End Date & Time *
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <input
-                        type="date"
-                        value={eventFormData.endDate}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, endDate: e.target.value }))}
-                        required={!editingEvent}
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowEndDatePicker(true)}
                         style={{
-                          width: '100%',
-                          padding: '12px',
+                          flex: 1,
+                          padding: '8px 12px',
                           border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
-                        }}
-                      />
-                      <select
-                        value={eventFormData.endTime}
-                        onChange={(e) => setEventFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                        required={!editingEvent}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          border: '1px solid #D1D5DB',
-                          borderRadius: '8px',
-                          fontSize: '14px'
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          minWidth: '150px',
+                          backgroundColor: 'white',
+                          cursor: 'pointer',
+                          textAlign: 'left'
                         }}
                       >
-                        <option value="">Select end time</option>
-                        {TIME_OPTIONS.map(time => (
-                          <option key={time.value} value={time.value}>
-                            {time.label}
-                          </option>
-                        ))}
-                      </select>
+                        {eventFormData.endDate ? formatFriendlyDate(eventFormData.endDate) : 'Select date'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowEndTimePicker(true)}
+                        style={{
+                          flex: 1,
+                          minWidth: '150px',
+                          padding: '8px 12px',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          backgroundColor: 'white',
+                          cursor: 'pointer',
+                          textAlign: 'left'
+                        }}
+                      >
+                        {eventFormData.endTime || 'Select time'}
+                      </button>
                     </div>
                   </div>
 
@@ -2744,9 +3265,33 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     </label>
                     <LocationPicker
                       value={eventFormData.location}
-                      onChange={(location) => setEventFormData(prev => ({ ...prev, location }))}
+                      onChange={(location) => setEventFormData(prev => ({ ...prev, location: location as any }))}
                       placeholder="Search for a location..."
                     />
+                  </div>
+
+                  {/* Event Status */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                      Event Status
+                    </label>
+                    <select
+                      value={eventFormData.status}
+                      onChange={(e) => setEventFormData(prev => ({ ...prev, status: e.target.value as 'draft' | 'published' | 'cancelled' | 'completed' }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="published">Published</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="completed">Completed</option>
+                    </select>
                   </div>
 
                   {/* Capacity and Price */}
@@ -2990,37 +3535,41 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
                               Start Date & Time *
                             </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                              <input
-                                type="date"
-                                value={activity.startDate}
-                                onChange={(e) => updateActivity(index, 'startDate', e.target.value)}
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showStartDate', true)}
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
+                                  flex: 1,
+                                  padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
-                                }}
-                              />
-                              <select
-                                value={activity.startTime}
-                                onChange={(e) => updateActivity(index, 'startTime', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  minWidth: '120px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
                               >
-                                <option value="">Start time</option>
-                                {TIME_OPTIONS.map(time => (
-                                  <option key={time.value} value={time.value}>
-                                    {time.label}
-                                  </option>
-                                ))}
-                              </select>
+                                {activity.startDate ? formatFriendlyDate(activity.startDate) : 'Select date'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showStartTime', true)}
+                                style={{
+                                  flex: 1,
+                                  fontSize: '12px',
+                                  minWidth: '120px',
+                                  padding: '6px 8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
+                                }}
+                              >
+                                {activity.startTime || 'Select time'}
+                              </button>
                             </div>
                           </div>
 
@@ -3029,51 +3578,49 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>
                               End Date & Time *
                             </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                              <input
-                                type="date"
-                                value={activity.endDate}
-                                onChange={(e) => updateActivity(index, 'endDate', e.target.value)}
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showEndDate', true)}
                                 style={{
-                                  width: '100%',
-                                  padding: '8px',
+                                  flex: 1,
+                                  padding: '6px 8px',
                                   border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
-                                }}
-                              />
-                              <select
-                                value={activity.endTime}
-                                onChange={(e) => updateActivity(index, 'endTime', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  border: '1px solid #D1D5DB',
-                                  borderRadius: '6px',
-                                  fontSize: '14px'
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  minWidth: '120px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
                                 }}
                               >
-                                <option value="">End time</option>
-                                {TIME_OPTIONS.map(time => (
-                                  <option key={time.value} value={time.value}>
-                                    {time.label}
-                                  </option>
-                                ))}
-                              </select>
+                                {activity.endDate ? formatFriendlyDate(activity.endDate) : 'Select date'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActivityPickerState(index, 'showEndTime', true)}
+                                style={{
+                                  flex: 1,
+                                  fontSize: '12px',
+                                  minWidth: '120px',
+                                  padding: '6px 8px',
+                                  border: '1px solid #D1D5DB',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'white',
+                                  cursor: 'pointer',
+                                  textAlign: 'left'
+                                }}
+                              >
+                                {activity.endTime || 'Select time'}
+                              </button>
                             </div>
                           </div>
-                          <input
-                            type="text"
-                            placeholder="Location"
-                            value={activity.location}
-                            onChange={(e) => updateActivity(index, 'location', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px',
-                              border: '1px solid #D1D5DB',
-                              borderRadius: '6px',
-                              fontSize: '14px'
-                            }}
+                          <LocationPicker
+                            value={typeof activity.location === 'string' 
+                              ? { name: activity.location, address: activity.location } 
+                              : activity.location as any}
+                            onChange={(location: any) => updateActivity(index, 'location', location)}
+                            placeholder="Search for activity location..."
                           />
                           <select
                             value={activity.category}
@@ -3124,41 +3671,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                   </div>
                 </div>
 
-                {/* Form Actions */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
-                  <button
-                    type="button"
-                    onClick={handleCancelEventForm}
-                    style={{
-                      backgroundColor: '#F3F4F6',
-                      color: '#374151',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px 24px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={eventsLoading}
-                    style={{
-                      backgroundColor: eventsLoading ? '#9CA3AF' : '#3B82F6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '12px 24px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: eventsLoading ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {editingEvent ? 'Update Event' : 'Create Event'}
-                  </button>
-                </div>
               </form>
             </div>
           </div>
@@ -3224,6 +3736,100 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
           />
         </div>
       )}
+
+      {/* Modern Calendar and Time Pickers */}
+      {showStartDatePicker && (
+        <ModernCalendar
+          selectedDate={eventFormData.startDate}
+          onDateSelect={(date) => {
+            setEventFormData(prev => ({ ...prev, startDate: date }));
+            setShowStartDatePicker(false);
+          }}
+          onClose={() => setShowStartDatePicker(false)}
+        />
+      )}
+
+      {showStartTimePicker && (
+        <ModernTimePicker
+          selectedTime={eventFormData.startTime}
+          onTimeSelect={(time) => {
+            setEventFormData(prev => ({ ...prev, startTime: time }));
+            setShowStartTimePicker(false);
+          }}
+          onClose={() => setShowStartTimePicker(false)}
+        />
+      )}
+
+      {showEndDatePicker && (
+        <ModernCalendar
+          selectedDate={eventFormData.endDate}
+          onDateSelect={(date) => {
+            setEventFormData(prev => ({ ...prev, endDate: date }));
+            setShowEndDatePicker(false);
+          }}
+          onClose={() => setShowEndDatePicker(false)}
+        />
+      )}
+
+      {showEndTimePicker && (
+        <ModernTimePicker
+          selectedTime={eventFormData.endTime}
+          onTimeSelect={(time) => {
+            setEventFormData(prev => ({ ...prev, endTime: time }));
+            setShowEndTimePicker(false);
+          }}
+          onClose={() => setShowEndTimePicker(false)}
+        />
+      )}
+
+      {/* Activity Calendar and Time Pickers */}
+      {activities.map((activity, index) => (
+        <div key={`activity-pickers-${index}`}>
+          {getActivityPickerState(index, 'showStartDate') && (
+            <ModernCalendar
+              selectedDate={activity.startDate}
+              onDateSelect={(date) => {
+                updateActivity(index, 'startDate', date);
+                setActivityPickerState(index, 'showStartDate', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showStartDate', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showStartTime') && (
+            <ModernTimePicker
+              selectedTime={activity.startTime}
+              onTimeSelect={(time) => {
+                updateActivity(index, 'startTime', time);
+                setActivityPickerState(index, 'showStartTime', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showStartTime', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showEndDate') && (
+            <ModernCalendar
+              selectedDate={activity.endDate}
+              onDateSelect={(date) => {
+                updateActivity(index, 'endDate', date);
+                setActivityPickerState(index, 'showEndDate', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showEndDate', false)}
+            />
+          )}
+
+          {getActivityPickerState(index, 'showEndTime') && (
+            <ModernTimePicker
+              selectedTime={activity.endTime}
+              onTimeSelect={(time) => {
+                updateActivity(index, 'endTime', time);
+                setActivityPickerState(index, 'showEndTime', false);
+              }}
+              onClose={() => setActivityPickerState(index, 'showEndTime', false)}
+            />
+          )}
+        </div>
+      ))}
 
     </div>
   );

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '../../../packages/database/src/types';
+import { Database } from '../../../packages/database/src/supabase-types';
 
 // Supabase configuration for testing environment (Docker)
 const supabaseUrl = 'http://127.0.0.1:54321';
