@@ -54,8 +54,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
         return value.address;
       } else if (value.name && value.name.trim() !== '') {
         return value.name;
-      } else if (value.formatted_address && value.formatted_address.trim() !== '') {
-        return value.formatted_address;
+      } else if ((value as any).formatted_address && (value as any).formatted_address.trim() !== '') {
+        return (value as any).formatted_address;
       }
       // If it's an empty object (like initial state), return empty string
       return '';

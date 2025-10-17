@@ -7,6 +7,7 @@
  */
 
 import * as Headless from '@headlessui/react'
+const HeadlessAny = Headless as any;
 import React, { forwardRef } from 'react'
 
 export const Link = forwardRef(function Link(
@@ -14,8 +15,8 @@ export const Link = forwardRef(function Link(
   ref: React.ForwardedRef<HTMLAnchorElement>
 ) {
   return (
-    <Headless.DataInteractive>
+    <HeadlessAny.DataInteractive>
       <a {...props} ref={ref} />
-    </Headless.DataInteractive>
+    </HeadlessAny.DataInteractive>
   )
 })
