@@ -13,7 +13,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
-      "buildNumber": "3",
+      "buildNumber": "5",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
