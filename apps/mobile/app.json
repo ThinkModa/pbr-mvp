@@ -14,11 +14,11 @@
     },
     "android": {
       "package": "com.thinkmodalabs.pbrmvp",
-      "versionCode": 10
+      "versionCode": 3
     },
     "ios": {
       "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
-      "buildNumber": "10",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
