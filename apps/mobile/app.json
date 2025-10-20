@@ -5,6 +5,7 @@
     "owner": "thinkmodalabs",
     "version": "1.0.0",
     "scheme": "com.thinkmodalabs.pbr-mvp",
+    "icon": "./assets/PBR Icon - App Store.png",
     "assetBundlePatterns": [
       "**/*"
     ],
