@@ -463,16 +463,41 @@ const EventsScreen: React.FC<{
   // Handle business press
   const handleBusinessPress = (business: any) => {
     console.log('Business pressed:', business);
-    setSelectedBusiness(business.business);
-    setSelectedBusinessContacts(business.contacts || []);
-    setBusinessModalVisible(true);
+    const entity = {
+      id: business.business?.id || '',
+      name: business.business?.name || '',
+      type: business.business?.isSponsor ? 'sponsor' as const : 'vendor' as const,
+      businessName: business.business?.name,
+      company: business.business?.name,
+      description: business.business?.description,
+      contactInfo: business.business?.phone,
+      logoUrl: business.business?.logoUrl,
+      sponsorshipLevel: business.sponsorshipLevel,
+      website: business.business?.website,
+    };
+    console.log('Created entity for EntityCardOverlay:', entity);
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
   };
 
   // Handle organization press
   const handleOrganizationPress = (organization: any) => {
     console.log('Organization pressed:', organization);
-    setSelectedOrganization(organization.organization);
-    setOrganizationModalVisible(true);
+    const entity = {
+      id: organization.organization?.id || '',
+      name: organization.organization?.name || '',
+      type: organization.organization?.isSponsor ? 'sponsor' as const : 'vendor' as const,
+      businessName: organization.organization?.name,
+      company: organization.organization?.name,
+      description: organization.organization?.description,
+      contactInfo: organization.organization?.phone,
+      logoUrl: organization.organization?.logoUrl,
+      sponsorshipLevel: organization.role,
+      website: organization.organization?.website,
+    };
+    console.log('Created entity for EntityCardOverlay:', entity);
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
   };
 
   // Handle map press to open native map apps

@@ -161,7 +161,7 @@ const EntityCardOverlay: React.FC<EntityCardOverlayProps> = ({ visible, entity, 
                   size={120}
                   fallbackText="??"
                   userPhotoUrl={entity.profileImageUrl || entity.logoUrl}
-                  forceInitials={false}
+                  forceInitials={entity.type === 'speaker'}
                   allowExternalImages={true}
                 />
               </View>

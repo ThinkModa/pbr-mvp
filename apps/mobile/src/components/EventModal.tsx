@@ -27,7 +27,7 @@ import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
 import AvatarComponent from './AvatarComponent';
-import EntityCardModal from './EntityCardModal';
+import EntityCardOverlay from './EntityCardOverlay';
 
 interface EventModalProps {
   visible: boolean;
@@ -35,11 +35,15 @@ interface EventModalProps {
   onClose: () => void;
   onRSVP: (eventId: string, status: 'attending' | 'not_attending' | null) => void;
   onActivityPress: (activity: any) => void;
+  entityCardModalVisible: boolean;
+  setEntityCardModalVisible: (visible: boolean) => void;
+  selectedEntity: any;
+  setSelectedEntity: (entity: any) => void;
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP, onActivityPress }) => {
+const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP, onActivityPress, entityCardModalVisible, setEntityCardModalVisible, selectedEntity, setSelectedEntity }) => {
   const { user } = useAuth();
   const [userRSVP, setUserRSVP] = useState<RSVPStatus | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(false);
@@ -57,9 +61,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Entity card modal state
-  const [entityCardModalVisible, setEntityCardModalVisible] = useState(false);
-  const [selectedEntity, setSelectedEntity] = useState<any>(null);
+  // Entity card modal state is now passed as props
 
   console.log('🎬 EventModal render:', { visible, event: event?.title });
   console.log('🎬 EventModal: About to render map placeholder section');
@@ -1029,8 +1031,8 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         onClose={() => setOrganizationModalVisible(false)}
       />
 
-      {/* Entity Card Modal */}
-      <EntityCardModal
+      {/* Entity Card Overlay */}
+      <EntityCardOverlay
         visible={entityCardModalVisible}
         entity={selectedEntity}
         onClose={() => setEntityCardModalVisible(false)}
