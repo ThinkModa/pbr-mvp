@@ -93,16 +93,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Initialize auth state
+  // Initialize auth state with timeout and retry logic
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        setLoading(true);
+        console.log('🔄 Initializing auth state...');
         
-        if (error) {
-          console.error('Error getting session:', error);
+        // Set a timeout for the initialization
+        const initTimeout = setTimeout(() => {
+          console.log('⏰ Auth initialization timeout, stopping loading');
+          setLoading(false);
+        }, 10000); // 10 second timeout
+        
+        // Test connection first with retry
+        let isConnected = false;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (!isConnected && retryCount < maxRetries) {
+          isConnected = await testConnection();
+          if (!isConnected) {
+            retryCount++;
+            console.log(`❌ Connection failed, retry ${retryCount}/${maxRetries}`);
+            if (retryCount < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            }
+          }
+        }
+        
+        if (!isConnected) {
+          console.log('❌ No connection to Supabase after retries');
           setConnectionError('Authentication service unavailable');
           setIsConnected(false);
+          clearTimeout(initTimeout);
           setLoading(false);
           return;
         }
@@ -110,17 +134,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsConnected(true);
         setConnectionError(null);
         
+        // Get current session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('❌ Error getting session:', error);
+          setConnectionError('Failed to check authentication status');
+          setIsConnected(false);
+          clearTimeout(initTimeout);
+          setLoading(false);
+          return;
+        }
+        
         if (session?.user) {
           console.log('✅ Found existing session, loading profile for:', session.user.email);
           await loadUserProfile(session.user);
         } else {
           console.log('ℹ️ No existing session found');
-          setLoading(false);
+          setUser(null);
         }
+        
+        clearTimeout(initTimeout);
       } catch (error) {
-        console.error('Failed to initialize auth:', error);
-        setConnectionError('Connection issue, retrying...');
+        console.error('❌ Failed to initialize auth:', error);
+        setConnectionError('Authentication initialization failed');
         setIsConnected(false);
+      } finally {
         setLoading(false);
       }
     };
@@ -162,7 +201,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   email: 'user@example.com', // We don't have the email from error URL
                   name: 'New User',
                   role: 'general',
-                  avatar_url: null,
+                  avatar_url: undefined,
                   is_active: true,
                   preferences: {},
                   last_login_at: new Date().toISOString(),
@@ -398,6 +437,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('🔄 Loading user profile for:', supabaseUser.email);
       console.log('🆔 User ID for profile load:', supabaseUser.id);
       
+      // Set a timeout for profile loading
+      const profileTimeout = setTimeout(() => {
+        console.log('⏰ Profile loading timeout, creating fallback user');
+        createUserFromOAuthData(supabaseUser);
+      }, 8000); // 8 second timeout
+      
       console.log('🔍 Executing profile query...');
       const { data: userProfile, error } = await supabase
         .from('users')
@@ -405,6 +450,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .eq('id', supabaseUser.id)
         .single();
 
+      clearTimeout(profileTimeout);
       console.log('📊 Profile query result:', { userProfile, error });
 
       if (error) {
@@ -439,8 +485,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('Error in loadUserProfile:', error);
-      setConnectionError('Failed to load user profile');
-      setLoading(false);
+      // Don't set connection error, just create fallback user
+      console.log('🔄 Creating fallback user from OAuth data due to error');
+      createUserFromOAuthData(supabaseUser);
     }
   };
 

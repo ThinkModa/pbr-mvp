@@ -11,6 +11,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "android": {
+      "package": "com.thinkmodalabs.pbrmvp",
+      "versionCode": 10
+    },
     "ios": {
       "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
       "buildNumber": "10",

@@ -42,9 +42,17 @@ import ProfileCompletionModal from './ProfileCompletionModal';
 import TrackSelectionContent from './TrackSelectionContent';
 import AttendeesContent from './AttendeesContent';
 import AvatarComponent from './AvatarComponent';
+import EntityCardOverlay from './EntityCardOverlay';
 
 // Events Screen
-const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
+const EventsScreen: React.FC<{ 
+  setCurrentScreen: (screen: string) => void; 
+  handleSpeakerPress: (speaker: any) => void;
+  entityCardModalVisible: boolean;
+  setEntityCardModalVisible: (visible: boolean) => void;
+  selectedEntity: any;
+  setSelectedEntity: (entity: any) => void;
+}> = ({ setCurrentScreen, handleSpeakerPress, entityCardModalVisible, setEntityCardModalVisible, selectedEntity, setSelectedEntity }) => {
   const { user, signOut } = useAuth();
   const [events, setEvents] = useState<EventWithActivities[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,6 +286,24 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     loadActivityOrganizations(activity.id);
   };
 
+  const handleModalClose = () => {
+    console.log('🎯 Closing modal and resetting state');
+    setModalVisible(false);
+    setSelectedEvent(null);
+    setSelectedActivity(null);
+    setModalView('event');
+    // Reset all modal-related state to prevent scrolling issues
+    setEventSpeakers([]);
+    setActivitySpeakers([]);
+    setEventBusinesses([]);
+    setEventOrganizations([]);
+    setActivityOrganizations([]);
+    setSelectedSpeaker(null);
+    setSelectedBusiness(null);
+    setSelectedOrganization(null);
+    setSpeakerModalVisible(false);
+  };
+
   const handleTrackSelected = async (trackId: string) => {
     console.log('Track selected:', trackId);
     if (!user || !selectedEvent) return;
@@ -408,12 +434,6 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
     }
   };
 
-  // Handle speaker press
-  const handleSpeakerPress = (speaker: any) => {
-    console.log('Speaker pressed:', speaker);
-    setSelectedSpeaker(speaker);
-    setSpeakerModalVisible(true);
-  };
 
   // Load businesses and organizations for the current event
   const loadEventBusinesses = async (eventId: string) => {
@@ -763,8 +783,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
           } else if (modalView === 'attendees') {
             setModalView('event');
           } else {
-            setModalVisible(false);
-            setSelectedEvent(null);
+            handleModalClose();
           }
         }}
         presentationStyle="pageSheet"
@@ -782,8 +801,7 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
                 } else if (modalView === 'attendees') {
                   setModalView('event');
                 } else {
-                  setModalVisible(false);
-                  setSelectedEvent(null);
+                  handleModalClose();
                 }
               }} 
               style={{ padding: 10 }}
@@ -2033,6 +2051,16 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
             ) : null}
           </View>
         </SafeAreaView>
+        
+        {/* Entity Card Overlay - Inside the event modal to appear on top */}
+        <EntityCardOverlay
+          visible={entityCardModalVisible}
+          entity={selectedEntity}
+          onClose={() => {
+            console.log('🎯 EntityCardOverlay onClose called');
+            setEntityCardModalVisible(false);
+          }}
+        />
       </Modal>
 
       {/* Speaker Modal */}
@@ -2081,7 +2109,6 @@ const EventsScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = (
         }}
       />
 
-
       {/* Floating Action Button for Create Event - Only show for admins */}
       {user?.role === 'admin' && (
         <TouchableOpacity
@@ -2126,6 +2153,12 @@ const ProfileScreen: React.FC = () => {
       const userProfile = await ProfileService.getUserProfile(user.id);
       setProfile(userProfile);
       console.log('✅ Loaded user profile:', userProfile);
+      // console.log('🔍 Profile name data:', {
+      //   name: userProfile.name,
+      //   firstName: userProfile.firstName,
+      //   lastName: userProfile.lastName,
+      //   constructedName: userProfile.name || `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim()
+      // });
     } catch (error) {
       console.error('Error loading user profile:', error);
       // Fallback to mock data if service fails
@@ -2373,6 +2406,9 @@ const ProfileScreen: React.FC = () => {
       // Update local profile state
       setProfile((prev: any) => prev ? { ...prev, avatarUrl: publicUrl } : null);
       
+      // Reload profile to ensure consistency
+      await loadUserProfile();
+      
       Alert.alert('Success', 'Profile picture updated successfully!');
     } catch (error) {
       console.error('Error uploading profile image:', error);
@@ -2421,17 +2457,18 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.profilePageHeader}>
           <View style={styles.profilePageImageContainer}>
             <AvatarComponent
-              name={`${profile.firstName} ${profile.lastName}`}
+              name={profile.name || `${profile.firstName || ''} ${profile.lastName || ''}`.trim()}
               size={120}
               fallbackText="??"
               userPhotoUrl={profile.avatarUrl}
+              forceInitials={false}
             />
             <TouchableOpacity style={styles.profileUploadButton} onPress={handleImageUpload}>
               <Text style={styles.profileUploadButtonText}>Upload</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.profilePageInfo}>
-            <Text style={styles.profilePageName}>{profile.firstName} {profile.lastName}</Text>
+            <Text style={styles.profilePageName}>{profile.name || `${profile.firstName || ''} ${profile.lastName || ''}`.trim()}</Text>
             <View style={styles.profilePointsContainer}>
               <Text style={styles.profilePointsIcon}>⭐</Text>
               <Text style={styles.profilePointsText}>{profile.points.toLocaleString()} Points</Text>
@@ -2843,7 +2880,7 @@ const ProfileEditModal: React.FC<{
             <Text style={styles.profileSectionTitle}>Profile Picture</Text>
             <View style={styles.profilePageImageContainer}>
               <AvatarComponent
-                name={`${formData.firstName} ${formData.lastName}`}
+                name={formData.name || `${formData.firstName || ''} ${formData.lastName || ''}`.trim()}
                 size={120}
                 fallbackText="??"
                 userPhotoUrl={formData.avatarUrl}
@@ -3172,10 +3209,14 @@ const InterestsSelectionModal: React.FC<{
 };
 
 // Chat Screen
-const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ setCurrentScreen }) => {
+const ChatScreen: React.FC<{ 
+  setCurrentScreen: (screen: string) => void;
+  activeTab: 'notifications' | 'group' | 'direct' | 'announcements';
+  setActiveTab: (tab: 'notifications' | 'group' | 'direct' | 'announcements') => void;
+  groupFilter: 'events' | 'users';
+  setGroupFilter: (filter: 'events' | 'users') => void;
+}> = ({ setCurrentScreen, activeTab, setActiveTab, groupFilter, setGroupFilter }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
-  const [groupFilter, setGroupFilter] = useState<'events' | 'users'>('events');
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3789,11 +3830,13 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
                       ]}
                       onPress={() => handleUserSelection(item.id)}
                     >
-                      <View style={styles.userAvatar}>
-                        <Text style={styles.userAvatarText}>
-                          {item.name ? item.name.charAt(0).toUpperCase() : '?'}
-                        </Text>
-                      </View>
+                      <AvatarComponent
+                        name={item.name || 'Unknown User'}
+                        size={40}
+                        fallbackText="??"
+                        userPhotoUrl={item.avatar_url}
+                        forceInitials={false}
+                      />
                       <View style={styles.userInfo}>
                         <Text style={styles.userName}>{item.name || 'Unknown User'}</Text>
                         <Text style={styles.userEmail}>{item.email}</Text>
@@ -3885,9 +3928,14 @@ const ChatScreen: React.FC<{ setCurrentScreen: (screen: string) => void }> = ({ 
 };
 
 // Chat Thread Screen
-const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: string) => void }> = ({ 
+const ChatThreadScreen: React.FC<{ 
+  threadId: string; 
+  setCurrentScreen: (screen: string) => void;
+  navigateBack?: () => void;
+}> = ({ 
   threadId, 
-  setCurrentScreen 
+  setCurrentScreen,
+  navigateBack 
 }) => {
   const { user } = useAuth();
   const [thread, setThread] = useState<ChatThread | null>(null);
@@ -4151,7 +4199,17 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
         {!isOwnMessage && (
           <AvatarComponent
-            name={item.user?.name || 'Unknown User'}
+            name={(() => {
+              const userName = item.user?.name || 'Unknown User';
+              console.log('💬 Chat message debugging:', {
+                userId: item.userId,
+                userName: userName,
+                userData: item.user,
+                firstName: item.user?.first_name,
+                lastName: item.user?.last_name
+              });
+              return userName;
+            })()}
             size={30}
             fallbackText="??"
             style={styles.messageAvatar}
@@ -4177,7 +4235,7 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+          <TouchableOpacity onPress={() => navigateBack ? navigateBack() : setCurrentScreen('chat')}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.chatHeaderTitle}>Loading...</Text>
@@ -4194,7 +4252,7 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+          <TouchableOpacity onPress={() => navigateBack ? navigateBack() : setCurrentScreen('chat')}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.chatHeaderTitle}>Error</Text>
@@ -4214,7 +4272,7 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
     <SafeAreaView style={styles.container}>
       {/* Chat Header */}
       <View style={styles.chatHeader}>
-        <TouchableOpacity onPress={() => setCurrentScreen('chat')}>
+        <TouchableOpacity onPress={() => navigateBack ? navigateBack() : setCurrentScreen('chat')}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.chatHeaderTitle}>{getThreadTitle()}</Text>
@@ -4294,11 +4352,13 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <View style={styles.userItem}>
-                  <View style={styles.userAvatar}>
-                    <Text style={styles.userAvatarText}>
-                      {item.users?.name ? item.users.name.charAt(0).toUpperCase() : '?'}
-                    </Text>
-                  </View>
+                  <AvatarComponent
+                    name={item.users?.name || 'Unknown User'}
+                    size={40}
+                    fallbackText="??"
+                    userPhotoUrl={item.users?.avatar_url}
+                    forceInitials={false}
+                  />
                   <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.users?.name || 'Unknown User'}</Text>
                     <Text style={styles.userEmail}>{item.users?.email}</Text>
@@ -4353,11 +4413,13 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
                   ]}
                   onPress={() => handleUserSelectionForAdd(item.id)}
                 >
-                  <View style={styles.userAvatar}>
-                    <Text style={styles.userAvatarText}>
-                      {item.name ? item.name.charAt(0).toUpperCase() : '?'}
-                    </Text>
-                  </View>
+                  <AvatarComponent
+                    name={item.name || 'Unknown User'}
+                    size={40}
+                    fallbackText="??"
+                    userPhotoUrl={item.avatar_url}
+                    forceInitials={false}
+                  />
                   <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.name || 'Unknown User'}</Text>
                     <Text style={styles.userEmail}>{item.email}</Text>
@@ -4402,27 +4464,95 @@ const ChatThreadScreen: React.FC<{ threadId: string; setCurrentScreen: (screen: 
 // Main App with Navigation
 const MainApp: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState('events');
+  const [navigationHistory, setNavigationHistory] = useState<string[]>(['events']);
+  const [chatTabState, setChatTabState] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
+  const [chatGroupFilterState, setChatGroupFilterState] = useState<'events' | 'users'>('events');
+  
+  // Entity card modal state
+  const [entityCardModalVisible, setEntityCardModalVisible] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<any>(null);
+
+  // Enhanced navigation function that tracks history
+  const navigateToScreen = (screen: string) => {
+    console.log('🧭 Navigating to:', screen, 'from:', currentScreen);
+    setNavigationHistory(prev => {
+      const newHistory = [...prev, screen];
+      console.log('📚 Navigation history:', newHistory);
+      return newHistory;
+    });
+    setCurrentScreen(screen);
+  };
+
+  // Back navigation function
+  const navigateBack = () => {
+    console.log('🔙 Navigating back. Current history:', navigationHistory);
+    if (navigationHistory.length > 1) {
+      const newHistory = [...navigationHistory];
+      newHistory.pop(); // Remove current screen
+      const previousScreen = newHistory[newHistory.length - 1];
+      console.log('🔙 Going back to:', previousScreen);
+      setNavigationHistory(newHistory);
+      setCurrentScreen(previousScreen);
+    } else {
+      // Fallback to events if no history
+      console.log('🔙 No history, going to events');
+      setCurrentScreen('events');
+    }
+  };
 
   const renderScreen = () => {
     if (currentScreen.startsWith('chat-thread-')) {
       // Handle chat thread screens
       const threadId = currentScreen.replace('chat-thread-', '');
-      return <ChatThreadScreen threadId={threadId} setCurrentScreen={setCurrentScreen} />;
+      return <ChatThreadScreen threadId={threadId} setCurrentScreen={navigateToScreen} navigateBack={navigateBack} />;
     }
     
     switch (currentScreen) {
       case 'events':
-        return <EventsScreen setCurrentScreen={setCurrentScreen} />;
+        return <EventsScreen 
+          setCurrentScreen={navigateToScreen} 
+          handleSpeakerPress={handleSpeakerPress}
+          entityCardModalVisible={entityCardModalVisible}
+          setEntityCardModalVisible={setEntityCardModalVisible}
+          selectedEntity={selectedEntity}
+          setSelectedEntity={setSelectedEntity}
+        />;
       case 'profile':
         return <ProfileScreen />;
       case 'chat':
-        return <ChatScreen setCurrentScreen={setCurrentScreen} />;
+        return <ChatScreen setCurrentScreen={navigateToScreen} activeTab={chatTabState} setActiveTab={setChatTabState} groupFilter={chatGroupFilterState} setGroupFilter={setChatGroupFilterState} />;
       default:
-        return <EventsScreen setCurrentScreen={setCurrentScreen} />;
+        return <EventsScreen 
+          setCurrentScreen={navigateToScreen} 
+          handleSpeakerPress={handleSpeakerPress}
+          entityCardModalVisible={entityCardModalVisible}
+          setEntityCardModalVisible={setEntityCardModalVisible}
+          selectedEntity={selectedEntity}
+          setSelectedEntity={setSelectedEntity}
+        />;
     }
   };
 
   const isInChatThread = currentScreen.startsWith('chat-thread-');
+
+  // Handle speaker press for EntityCardModal
+  const handleSpeakerPress = (speaker: any) => {
+    console.log('MainApp: Speaker pressed:', speaker);
+    console.log('MainApp: Speaker profileImageUrl:', speaker.speaker?.profileImageUrl);
+    console.log('MainApp: Speaker headshotUrl:', speaker.speaker?.headshotUrl);
+    const entity = {
+      id: speaker.speaker?.id || speaker.id || '',
+      name: `${speaker.speaker?.firstName || speaker.firstName || ''} ${speaker.speaker?.lastName || speaker.lastName || ''}`.trim(),
+      type: 'speaker' as const,
+      role: speaker.speaker?.title || speaker.title,
+      company: speaker.speaker?.company || speaker.company,
+      bio: speaker.speaker?.bio || speaker.bio,
+      profileImageUrl: speaker.speaker?.profileImageUrl || speaker.speaker?.headshotUrl || speaker.profileImageUrl,
+    };
+    console.log('MainApp: Created entity for EntityCardModal:', entity);
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -4433,7 +4563,7 @@ const MainApp: React.FC = () => {
         <View style={styles.bottomNav}>
           <TouchableOpacity
             style={[styles.navItem, currentScreen === 'events' && styles.activeNavItem]}
-            onPress={() => setCurrentScreen('events')}
+            onPress={() => navigateToScreen('events')}
           >
             <Text style={styles.navIcon}>📅</Text>
             <Text style={[styles.navLabel, currentScreen === 'events' && styles.activeNavLabel]}>Events</Text>
@@ -4441,7 +4571,7 @@ const MainApp: React.FC = () => {
           
           <TouchableOpacity
             style={[styles.navItem, currentScreen === 'chat' && styles.activeNavItem]}
-            onPress={() => setCurrentScreen('chat')}
+            onPress={() => navigateToScreen('chat')}
           >
             <Text style={styles.navIcon}>💬</Text>
             <Text style={[styles.navLabel, currentScreen === 'chat' && styles.activeNavLabel]}>Chat</Text>
@@ -4449,13 +4579,14 @@ const MainApp: React.FC = () => {
           
           <TouchableOpacity
             style={[styles.navItem, currentScreen === 'profile' && styles.activeNavItem]}
-            onPress={() => setCurrentScreen('profile')}
+            onPress={() => navigateToScreen('profile')}
           >
             <Text style={styles.navIcon}>👤</Text>
             <Text style={[styles.navLabel, currentScreen === 'profile' && styles.activeNavLabel]}>Profile</Text>
           </TouchableOpacity>
         </View>
       )}
+      
     </SafeAreaView>
   );
 };

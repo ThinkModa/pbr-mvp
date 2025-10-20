@@ -151,7 +151,7 @@ export class ChatService {
 
   // Get messages for a specific thread
   static async getThreadMessages(threadId: string, limit: number = 50): Promise<ChatMessage[]> {
-    console.log('Getting thread messages:', { threadId, limit });
+    console.log('🔍 ChatService.getThreadMessages called:', { threadId, limit });
     
     const response = await fetch(
       `${this.SUPABASE_URL}/rest/v1/chat_messages?thread_id=eq.${threadId}&order=created_at.desc&limit=${limit}`,
@@ -167,12 +167,15 @@ export class ChatService {
     }
 
     const messages = await response.json();
-    console.log('✅ Retrieved thread messages:', messages.length);
+    console.log('🔍 ChatService: Retrieved thread messages:', messages.length);
+    console.log('🔍 ChatService: Raw messages:', messages);
     
     // Transform and enrich the data
     const enrichedMessages = await Promise.all(
       messages.map(async (message: any) => {
+        console.log('🔍 ChatService: About to enrich message:', message.id);
         const enriched = await this.enrichMessage(message);
+        console.log('🔍 ChatService: Enriched message result:', enriched);
         return enriched;
       })
     );
@@ -667,20 +670,40 @@ export class ChatService {
       isDelivered: true, // Assume delivered for now
     };
 
-    // Add user data
+    // Add user data with improved name handling
     try {
+      console.log('🔍 ChatService: Fetching user data for userId:', message.user_id);
       const userResponse = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/users?id=eq.${message.user_id}&select=id,name,email,profile_image_url`,
+        `${this.SUPABASE_URL}/rest/v1/users?id=eq.${message.user_id}&select=id,name,first_name,last_name,email,avatar_url`,
         { headers: this.getHeaders() }
       );
+      console.log('🔍 ChatService: User response status:', userResponse.status);
       if (userResponse.ok) {
         const users = await userResponse.json();
+        console.log('🔍 ChatService: Users found:', users.length, users);
         if (users.length > 0) {
-          enriched.user = users[0];
+          const user = users[0];
+          console.log('🔍 ChatService: Raw user data:', user);
+          // Construct name from first_name and last_name if name is missing
+          if (!user.name && (user.first_name || user.last_name)) {
+            user.name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+            console.log('🔍 ChatService: Constructed name from first/last:', user.name);
+          }
+          // Fallback to email if no name available
+          if (!user.name && user.email) {
+            user.name = user.email.split('@')[0]; // Use email prefix as fallback
+            console.log('🔍 ChatService: Using email prefix as name:', user.name);
+          }
+          enriched.user = user;
+          console.log('🔍 ChatService: Final enriched user:', enriched.user);
+        } else {
+          console.log('🔍 ChatService: No users found for userId:', message.user_id);
         }
+      } else {
+        console.log('🔍 ChatService: User fetch failed with status:', userResponse.status);
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('🔍 ChatService: Error fetching user data:', error);
     }
 
     return enriched;

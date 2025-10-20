@@ -225,18 +225,35 @@ export class RealTimeService {
       createdAt: message.created_at,
     };
 
-    // Add user data
+    // Add user data with improved name handling
     try {
+      console.log('🔍 RealTimeService: Fetching user data for userId:', message.user_id);
       const { data: users, error } = await supabase
         .from('users')
-        .select('id, name, email, profile_image_url')
+        .select('id, name, first_name, last_name, email, avatar_url')
         .eq('id', message.user_id);
       
+      console.log('🔍 RealTimeService: Query result:', { users, error });
       if (!error && users && users.length > 0) {
-        enriched.user = users[0];
+        const user = users[0];
+        console.log('🔍 RealTimeService: Raw user data:', user);
+        // Construct name from first_name and last_name if name is missing
+        if (!user.name && (user.first_name || user.last_name)) {
+          user.name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+          console.log('🔍 RealTimeService: Constructed name from first/last:', user.name);
+        }
+        // Fallback to email if no name available
+        if (!user.name && user.email) {
+          user.name = user.email.split('@')[0]; // Use email prefix as fallback
+          console.log('🔍 RealTimeService: Using email prefix as name:', user.name);
+        }
+        enriched.user = user;
+        console.log('🔍 RealTimeService: Final enriched user:', enriched.user);
+      } else {
+        console.log('🔍 RealTimeService: No users found or error:', { users, error });
       }
     } catch (error) {
-      console.error('Error fetching user data for real-time message:', error);
+      console.error('🔍 RealTimeService: Error fetching user data for real-time message:', error);
     }
 
     return enriched;

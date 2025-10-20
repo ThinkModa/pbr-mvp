@@ -13,11 +13,13 @@ import {
 } from 'react-native';
 import { RSVPService } from '../services/rsvpService';
 import { SpeakersService, ActivitySpeaker } from '../services/speakersService';
+import AvatarComponent from './AvatarComponent';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization } from '../services/organizationsService';
 import { EventsService } from '../services/eventsService';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import SpeakerModal from './SpeakerModal';
+import EntityCardModal from './EntityCardModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
 
@@ -95,6 +97,10 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
   const [speakerModalVisible, setSpeakerModalVisible] = useState(false);
   const [businessModalVisible, setBusinessModalVisible] = useState(false);
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
+  
+  // Entity card modal state
+  const [entityCardModalVisible, setEntityCardModalVisible] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<any>(null);
   
   // State for loading
   const [refreshing, setRefreshing] = useState(false);
@@ -202,6 +208,47 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
   const handleOrganizationPress = (organization: EventOrganization) => {
     setSelectedOrganization(organization.organization);
     setOrganizationModalVisible(true);
+  };
+
+  // Entity card modal handlers
+  const handleSpeakerCardPress = (activitySpeaker: ActivitySpeaker) => {
+    const entity = {
+      id: activitySpeaker.speaker?.id || '',
+      name: `${activitySpeaker.speaker?.firstName || ''} ${activitySpeaker.speaker?.lastName || ''}`.trim(),
+      type: 'speaker' as const,
+      role: activitySpeaker.speaker?.title,
+      company: activitySpeaker.speaker?.company,
+      bio: activitySpeaker.speaker?.bio,
+    };
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
+  };
+
+  const handleSponsorCardPress = (item: any) => {
+    if ('business' in item) {
+      const entity = {
+        id: item.business?.id || '',
+        name: item.business?.name || '',
+        type: 'sponsor' as const,
+        company: item.business?.name,
+        sponsorshipLevel: item.sponsorshipLevel,
+        description: item.business?.description,
+        website: item.business?.website,
+      };
+      setSelectedEntity(entity);
+    } else {
+      const entity = {
+        id: item.organization?.id || '',
+        name: item.organization?.name || '',
+        type: 'sponsor' as const,
+        company: item.organization?.name,
+        sponsorshipLevel: item.role,
+        description: item.organization?.description,
+        website: item.organization?.website,
+      };
+      setSelectedEntity(entity);
+    }
+    setEntityCardModalVisible(true);
   };
 
   const handleNextActivityPress = () => {
@@ -372,7 +419,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                     <TouchableOpacity
                       key={activitySpeaker.id}
                       style={styles.speakerCard}
-                      onPress={() => handleSpeakerPress(activitySpeaker)}
+                      onPress={() => handleSpeakerCardPress(activitySpeaker)}
                     >
                       <View style={styles.speakerAvatar}>
                         {activitySpeaker.speaker?.profileImageUrl ? (
@@ -381,11 +428,12 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                             style={styles.speakerAvatarImage} 
                           />
                         ) : (
-                          <View style={styles.speakerAvatarPlaceholder}>
-                            <Text style={styles.speakerAvatarText}>
-                              {activitySpeaker.speaker?.firstName?.[0]}{activitySpeaker.speaker?.lastName?.[0]}
-                            </Text>
-                          </View>
+                          <AvatarComponent
+                            name={`${activitySpeaker.speaker?.firstName || ''} ${activitySpeaker.speaker?.lastName || ''}`.trim()}
+                            size={50}
+                            fallbackText="??"
+                            forceInitials={true}
+                          />
                         )}
                       </View>
                       <Text style={styles.speakerName} numberOfLines={1}>
@@ -417,13 +465,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                     <TouchableOpacity
                       key={`sponsor-${index}`}
                       style={styles.sponsorCard}
-                      onPress={() => {
-                        if ('business' in item) {
-                          handleBusinessPress(item as EventBusiness);
-                        } else {
-                          handleOrganizationPress(item as EventOrganization);
-                        }
-                      }}
+                      onPress={() => handleSponsorCardPress(item)}
                     >
                       <View style={styles.sponsorLogo}>
                         {('business' in item && item.business?.logoUrl) ? (
@@ -439,13 +481,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                         ) : (
                           <View style={styles.sponsorLogoPlaceholder}>
                             <Text style={styles.sponsorLogoText}>
-                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                              {('business' in item ? item.business?.name : (item as EventOrganization).organization?.name)?.substring(0, 2).toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
                       <Text style={styles.sponsorName} numberOfLines={1}>
-                        {'business' in item ? item.business?.name : item.organization?.name}
+                        {'business' in item ? item.business?.name : (item as EventOrganization).organization?.name}
                       </Text>
                       <Text style={styles.sponsorLevel} numberOfLines={1}>
                         {('business' in item ? item.sponsorshipLevel : item.role) || 'Sponsor'}
@@ -492,13 +534,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                         ) : (
                           <View style={styles.vendorLogoPlaceholder}>
                             <Text style={styles.vendorLogoText}>
-                              {('business' in item ? item.business?.name : item.organization?.name)?.substring(0, 2).toUpperCase()}
+                              {('business' in item ? item.business?.name : (item as EventOrganization).organization?.name)?.substring(0, 2).toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
                       <Text style={styles.vendorName} numberOfLines={1}>
-                        {'business' in item ? item.business?.name : item.organization?.name}
+                        {'business' in item ? item.business?.name : (item as EventOrganization).organization?.name}
                       </Text>
                       <Text style={styles.vendorType} numberOfLines={1}>
                         {('business' in item ? item.role : item.role) || 'Vendor'}
@@ -565,6 +607,12 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
       visible={organizationModalVisible}
       organization={selectedOrganization}
       onClose={() => setOrganizationModalVisible(false)}
+    />
+
+    <EntityCardModal
+      visible={entityCardModalVisible}
+      entity={selectedEntity}
+      onClose={() => setEntityCardModalVisible(false)}
     />
   </>
   );

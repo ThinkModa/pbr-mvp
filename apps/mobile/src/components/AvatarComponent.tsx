@@ -26,6 +26,7 @@ export interface AvatarComponentProps {
   onError?: () => void;
   userPhotoUrl?: string; // Optional user-uploaded photo
   forceInitials?: boolean; // Force initials even if photo is available
+  allowExternalImages?: boolean; // Allow external image URLs (for speakers/vendors/sponsors)
 }
 
 const AvatarComponent: React.FC<AvatarComponentProps> = ({
@@ -37,18 +38,23 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
   fallbackText,
   onError,
   userPhotoUrl,
-  forceInitials = false
+  forceInitials = false,
+  allowExternalImages = false
 }) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
+  // console.log('🎭 AvatarComponent rendered with props:', { name, size, userPhotoUrl, forceInitials });
+
   const handleImageError = () => {
+    // console.log('🎭 Google profile image failed to load, falling back to initials');
     setImageError(true);
     setImageLoading(false);
     onError?.();
   };
 
   const handleImageLoad = () => {
+    // console.log('🎭 Google profile image loaded successfully');
     setImageLoading(false);
   };
 
@@ -60,10 +66,21 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
   };
 
   const getInitials = () => {
+    console.log('🎭 AvatarComponent getInitials called with name:', name);
     if (!name || name.trim() === '') {
+      console.log('🎭 No name provided, using fallback:', fallbackText || '??');
       return fallbackText || '??';
     }
-    return AvatarService.generateInitials(name);
+    // Handle cases where name might be an email
+    if (name.includes('@')) {
+      const emailPrefix = name.split('@')[0];
+      console.log('🎭 Name contains @, using email prefix:', emailPrefix);
+      return AvatarService.generateInitials(emailPrefix);
+    }
+    console.log('🎭 Using full name for initials:', name);
+    const initials = AvatarService.generateInitials(name);
+    console.log('🎭 AvatarService.generateInitials returned:', initials);
+    return initials;
   };
 
   const getBackgroundColor = () => {
@@ -95,7 +112,27 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
 
   // Determine what to show
   const shouldShowInitials = imageError || showInitials || forceInitials;
-  const hasUserPhoto = userPhotoUrl && !forceInitials;
+  // For regular users: only uploaded photos (avatars/), for speakers/vendors/sponsors: any valid image URL
+  const hasValidImage = userPhotoUrl && !forceInitials && (allowExternalImages || userPhotoUrl.includes('avatars/'));
+  
+  console.log('🎭 AvatarComponent rendering decision:', {
+    name,
+    userPhotoUrl,
+    allowExternalImages,
+    forceInitials,
+    shouldShowInitials,
+    hasValidImage,
+    imageError
+  });
+  
+  // console.log('🎭 AvatarComponent rendering decision:', {
+  //   shouldShowInitials,
+  //   hasUserPhoto,
+  //   imageError,
+  //   showInitials,
+  //   forceInitials,
+  //   userPhotoUrl: !!userPhotoUrl
+  // });
 
   // Show initials if image failed to load, explicitly requested, or forced
   if (shouldShowInitials) {
@@ -108,8 +145,8 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
     );
   }
 
-  // Show user photo if available and not forced to show initials
-  if (hasUserPhoto) {
+  // Show image if available and not forced to show initials
+  if (hasValidImage) {
     return (
       <View style={containerStyle}>
         <Image

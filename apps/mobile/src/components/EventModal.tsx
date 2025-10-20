@@ -26,6 +26,8 @@ import { useAuth } from '../contexts/SupabaseAuthContext';
 import SpeakerModal from './SpeakerModal';
 import BusinessModal from './BusinessModal';
 import OrganizationModal from './OrganizationModal';
+import AvatarComponent from './AvatarComponent';
+import EntityCardModal from './EntityCardModal';
 
 interface EventModalProps {
   visible: boolean;
@@ -54,9 +56,14 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
   const [businessModalVisible, setBusinessModalVisible] = useState(false);
   const [organizationModalVisible, setOrganizationModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Entity card modal state
+  const [entityCardModalVisible, setEntityCardModalVisible] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<any>(null);
 
   console.log('🎬 EventModal render:', { visible, event: event?.title });
   console.log('🎬 EventModal: About to render map placeholder section');
+  console.log('🎬 EventModal: Entity modal state:', { entityCardModalVisible, selectedEntity });
 
   // Debug: Log event data when modal opens
   useEffect(() => {
@@ -393,6 +400,64 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
     }
   };
 
+  // Entity card modal handlers
+  const handleSpeakerCardPress = (eventSpeaker: EventSpeaker) => {
+    console.log('🎯 EventModal: handleSpeakerCardPress called with:', eventSpeaker);
+    const entity = {
+      id: eventSpeaker.speaker?.id || '',
+      name: `${eventSpeaker.speaker?.firstName || ''} ${eventSpeaker.speaker?.lastName || ''}`.trim(),
+      type: 'speaker' as const,
+      role: eventSpeaker.speaker?.title,
+      company: eventSpeaker.speaker?.company,
+      bio: eventSpeaker.speaker?.bio,
+    };
+    console.log('🎯 EventModal: Created entity object:', entity);
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
+    console.log('🎯 EventModal: Set entityCardModalVisible to true');
+  };
+
+  const handleBusinessCardPress = (eventBusiness: EventBusiness) => {
+    const entity = {
+      id: eventBusiness.business?.id || '',
+      name: eventBusiness.business?.name || '',
+      type: 'vendor' as const,
+      businessName: eventBusiness.business?.name,
+      company: eventBusiness.business?.name,
+      description: eventBusiness.business?.description,
+      contactInfo: eventBusiness.business?.phone,
+    };
+    setSelectedEntity(entity);
+    setEntityCardModalVisible(true);
+  };
+
+  const handleSponsorCardPress = (item: any) => {
+    if ('business' in item) {
+      const entity = {
+        id: item.business?.id || '',
+        name: item.business?.name || '',
+        type: 'sponsor' as const,
+        company: item.business?.name,
+        sponsorshipLevel: item.sponsorshipLevel,
+        description: item.business?.description,
+        website: item.business?.website,
+      };
+      setSelectedEntity(entity);
+    } else {
+      const entity = {
+        id: item.organization?.id || '',
+        name: item.organization?.name || '',
+        type: 'sponsor' as const,
+        company: item.organization?.name,
+        sponsorshipLevel: item.role,
+        description: item.organization?.description,
+        website: item.organization?.website,
+      };
+      setSelectedEntity(entity);
+    }
+    setEntityCardModalVisible(true);
+  };
+
 
   return (
     <>
@@ -610,7 +675,10 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                       <TouchableOpacity
                         key={eventSpeaker.id}
                         style={styles.speakerCard}
-                        onPress={() => handleSpeakerPress(eventSpeaker)}
+                        onPress={() => {
+                          console.log('🎯 EventModal: Speaker card clicked directly');
+                          handleSpeakerCardPress(eventSpeaker);
+                        }}
                       >
                         <View style={styles.speakerAvatar}>
                           {eventSpeaker.speaker?.profileImageUrl ? (
@@ -619,11 +687,12 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                               style={styles.speakerAvatarImage} 
                             />
                           ) : (
-                            <View style={styles.speakerAvatarPlaceholder}>
-                              <Text style={styles.speakerAvatarText}>
-                                {eventSpeaker.speaker?.firstName?.[0]}{eventSpeaker.speaker?.lastName?.[0]}
-                              </Text>
-                            </View>
+                            <AvatarComponent
+                              name={`${eventSpeaker.speaker?.firstName || ''} ${eventSpeaker.speaker?.lastName || ''}`.trim()}
+                              size={50}
+                              fallbackText="??"
+                              forceInitials={true}
+                            />
                           )}
                         </View>
                         <Text style={styles.speakerName} numberOfLines={1}>
@@ -661,7 +730,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                         <TouchableOpacity
                           key={`business-${eventBusiness.id}`}
                           style={styles.businessCard}
-                          onPress={() => handleBusinessPress(eventBusiness)}
+                          onPress={() => handleSponsorCardPress(eventBusiness)}
                         >
                           <View style={styles.businessLogo}>
                             {eventBusiness.business?.logoUrl ? (
@@ -693,7 +762,7 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
                         <TouchableOpacity
                           key={`organization-${eventOrganization.id}`}
                           style={styles.businessCard}
-                          onPress={() => handleOrganizationPress(eventOrganization)}
+                          onPress={() => handleSponsorCardPress(eventOrganization)}
                         >
                           <View style={styles.businessLogo}>
                             {eventOrganization.organization?.logoUrl ? (
@@ -959,6 +1028,13 @@ const EventModal: React.FC<EventModalProps> = ({ visible, event, onClose, onRSVP
         organization={selectedOrganization}
         onClose={() => setOrganizationModalVisible(false)}
       />
+
+      {/* Entity Card Modal */}
+      <EntityCardModal
+        visible={entityCardModalVisible}
+        entity={selectedEntity}
+        onClose={() => setEntityCardModalVisible(false)}
+      />
     </>
   );
 };
@@ -1036,10 +1112,6 @@ const styles = StyleSheet.create({
     paddingBottom: 120, // Extra bottom padding to allow scrolling to see all content
   },
   mapSection: {
-    padding: 20,
-    paddingTop: 0, // No top padding since detailsContainer already has bottom padding
-  },
-  locationContainer: {
     padding: 20,
     paddingTop: 0, // No top padding since detailsContainer already has bottom padding
   },
