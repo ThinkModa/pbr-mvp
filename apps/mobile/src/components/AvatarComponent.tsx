@@ -113,7 +113,7 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
   // Determine what to show
   const shouldShowInitials = imageError || showInitials || forceInitials;
   // For regular users: only uploaded photos (avatars/), for speakers/vendors/sponsors: any valid image URL
-  const hasValidImage = userPhotoUrl && !forceInitials && (allowExternalImages || userPhotoUrl.includes('avatars/'));
+  const hasValidImage = userPhotoUrl && !forceInitials && (allowExternalImages ? true : userPhotoUrl.includes('avatars/'));
   
   console.log('🎭 AvatarComponent rendering decision:', {
     name,

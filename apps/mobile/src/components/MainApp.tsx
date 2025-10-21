@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  FlatList,
+  Alert,
   ActivityIndicator,
+  FlatList,
   RefreshControl,
   Modal,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Linking,
@@ -3258,6 +3258,19 @@ const ChatScreen: React.FC<{
   
   // User Selection Modal Flow State
   const [userSelectionStep, setUserSelectionStep] = useState<'select' | 'name'>('select');
+  
+  // Admin Features State
+  const [showEventSelectionModal, setShowEventSelectionModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [showEventChatModal, setShowEventChatModal] = useState(false);
+  const [availableEvents, setAvailableEvents] = useState<any[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [notificationTitle, setNotificationTitle] = useState('');
+  const [notificationContent, setNotificationContent] = useState('');
+  const [eventChatName, setEventChatName] = useState('');
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [creatingNotification, setCreatingNotification] = useState(false);
+  const [creatingEventChat, setCreatingEventChat] = useState(false);
 
   // Load threads when tab changes
   useEffect(() => {
@@ -3388,6 +3401,97 @@ const ChatScreen: React.FC<{
     setShowNewChatModal(false);
     loadAvailableUsers();
     setShowUserSelectionModal(true);
+  };
+
+  // Admin handler functions
+  const handleOpenEventModal = () => {
+    setShowNewChatModal(false);
+    loadAvailableEvents();
+    setShowEventSelectionModal(true);
+  };
+
+  const loadAvailableEvents = async () => {
+    setLoadingEvents(true);
+    try {
+      // Fetch all published events
+      const { data: events, error } = await supabase
+        .from('events')
+        .select('id,title,start_time,status')
+        .eq('status', 'published')
+        .eq('is_public', true)
+        .order('start_time', { ascending: true });
+      
+      if (!error && events) {
+        setAvailableEvents(events);
+      } else {
+        console.error('Failed to load events:', error);
+        setAvailableEvents([]);
+      }
+    } catch (error) {
+      console.error('Error loading events:', error);
+      setAvailableEvents([]);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  const handleCreateNotification = async () => {
+    if (!selectedEvent || !user) return;
+    
+    setCreatingNotification(true);
+    try {
+      // Create notification using the database function
+      const { data, error } = await supabase.rpc('send_notification_to_rsvps', {
+        p_event_id: selectedEvent.id,
+        p_title: `Event Update: ${selectedEvent.title}`,
+        p_content: `A new notification has been sent for "${selectedEvent.title}". Check your notifications for details.`,
+        p_created_by: user.id
+      });
+
+      if (error) {
+        console.error('Error creating notification:', error);
+        Alert.alert('Error', 'Failed to create notification. Please try again.');
+      } else {
+        Alert.alert('Success', 'Notification sent to all event attendees!');
+        setShowEventSelectionModal(false);
+        setSelectedEvent(null);
+        loadThreads(); // Refresh the threads list
+      }
+    } catch (error) {
+      console.error('Error creating notification:', error);
+      Alert.alert('Error', 'Failed to create notification. Please try again.');
+    } finally {
+      setCreatingNotification(false);
+    }
+  };
+
+  const handleCreateEventChat = async () => {
+    if (!selectedEvent || !user) return;
+    
+    setCreatingEventChat(true);
+    try {
+      // Create event chat using the database function
+      const { data, error } = await supabase.rpc('create_event_chat', {
+        p_event_id: selectedEvent.id,
+        p_chat_name: `${selectedEvent.title} Chat`,
+        p_created_by: user.id
+      });
+
+      if (error) {
+        console.error('Error creating event chat:', error);
+        Alert.alert('Error', 'Failed to create event chat. Please try again.');
+      } else {
+        Alert.alert('Success', 'Event chat created and all attendees have been added!');
+        setShowEventSelectionModal(false);
+        setSelectedEvent(null);
+        loadThreads(); // Refresh the threads list
+      }
+    } catch (error) {
+      console.error('Error creating event chat:', error);
+      Alert.alert('Error', 'Failed to create event chat. Please try again.');
+    } finally {
+      setCreatingEventChat(false);
+    }
   };
 
   const loadAvailableUsers = async () => {
@@ -3810,6 +3914,20 @@ const ChatScreen: React.FC<{
               </View>
             </TouchableOpacity>
 
+            {/* Admin-only options */}
+            {user?.role === 'admin' && (
+              <TouchableOpacity
+                style={styles.newChatOption}
+                onPress={handleOpenEventModal}
+              >
+                <Text style={styles.newChatOptionIcon}>📢</Text>
+                <View style={styles.newChatOptionContent}>
+                  <Text style={styles.newChatOptionTitle}>Event Notification\Chat</Text>
+                  <Text style={styles.newChatOptionDescription}>Send notifications or create chats for event attendees</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.newChatCancelButton}
               onPress={() => setShowNewChatModal(false)}
@@ -3946,6 +4064,95 @@ const ChatScreen: React.FC<{
             </>
           )}
         </SafeAreaView>
+      </Modal>
+
+      {/* Event Selection Modal */}
+      <Modal
+        visible={showEventSelectionModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEventSelectionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.newChatModal}>
+            <Text style={styles.newChatModalTitle}>Select Event</Text>
+            <Text style={styles.newChatModalSubtitle}>Choose an event to create a notification or chat for</Text>
+            
+            {loadingEvents ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#3B82F6" />
+                <Text style={styles.loadingText}>Loading events...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.eventsList}>
+                {availableEvents.map((event) => (
+                  <TouchableOpacity
+                    key={event.id}
+                    style={[
+                      styles.eventOption,
+                      selectedEvent?.id === event.id && styles.eventOptionSelected
+                    ]}
+                    onPress={() => setSelectedEvent(event)}
+                  >
+                    <View style={styles.eventOptionContent}>
+                      <Text style={styles.eventOptionTitle}>{event.title}</Text>
+                      <Text style={styles.eventOptionDate}>
+                        {new Date(event.start_time).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    {selectedEvent?.id === event.id && (
+                      <Text style={styles.eventOptionCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={styles.eventSelectionButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.eventActionButton,
+                  (!selectedEvent || creatingNotification) && styles.eventActionButtonDisabled
+                ]}
+                onPress={handleCreateNotification}
+                disabled={!selectedEvent || creatingNotification}
+              >
+                <Text style={[
+                  styles.eventActionButtonText,
+                  (!selectedEvent || creatingNotification) && styles.eventActionButtonTextDisabled
+                ]}>
+                  {creatingNotification ? 'Creating...' : 'Create Notification'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.eventActionButton,
+                  (!selectedEvent || creatingEventChat) && styles.eventActionButtonDisabled
+                ]}
+                onPress={handleCreateEventChat}
+                disabled={!selectedEvent || creatingEventChat}
+              >
+                <Text style={[
+                  styles.eventActionButtonText,
+                  (!selectedEvent || creatingEventChat) && styles.eventActionButtonTextDisabled
+                ]}>
+                  {creatingEventChat ? 'Creating...' : 'Create Event Chat'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.newChatCancelButton}
+              onPress={() => {
+                setShowEventSelectionModal(false);
+                setSelectedEvent(null);
+              }}
+            >
+              <Text style={styles.newChatCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
     </SafeAreaView>
@@ -5897,6 +6104,68 @@ const styles = StyleSheet.create({
   profileDropdownItemText: {
     fontSize: 16,
     color: '#265451',
+  },
+  // Event selection modal styles
+  eventsList: {
+    maxHeight: 300,
+    marginVertical: 16,
+  },
+  eventOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  eventOptionSelected: {
+    backgroundColor: '#EBF8FF',
+    borderColor: '#3B82F6',
+  },
+  eventOptionContent: {
+    flex: 1,
+  },
+  eventOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  eventOptionDate: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  eventOptionCheck: {
+    fontSize: 18,
+    color: '#3B82F6',
+    fontWeight: 'bold',
+  },
+  eventSelectionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  eventActionButton: {
+    flex: 1,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventActionButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  eventActionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  eventActionButtonTextDisabled: {
+    color: '#D1D5DB',
   },
 });
 
