@@ -18,6 +18,7 @@ import {
   Linking,
   ActionSheetIOS,
 } from 'react-native';
+// Removed SwipeRow import to fix props error
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
 // import { showLocation } from 'react-native-map-link'; // Removed - using native Linking instead
@@ -3289,17 +3290,17 @@ const ChatScreen: React.FC<{
       let threadsData: any[] = [];
       
       if (activeTab === 'notifications') {
-        // Load notification threads (event threads that are read-only)
+        // Load notification threads (read-only event notifications)
         threadsData = await ChatService.getUserThreads(user.id, 'announcements');
       } else if (activeTab === 'group') {
         // Load group chat threads
         threadsData = await ChatService.getUserThreads(user.id, 'group');
         
-        // Filter by events vs users
+        // Filter by events vs users using threadType
         if (groupFilter === 'events') {
-          threadsData = threadsData.filter(thread => thread.eventId);
+          threadsData = threadsData.filter(thread => thread.threadType === 'event');
         } else {
-          threadsData = threadsData.filter(thread => !thread.eventId);
+          threadsData = threadsData.filter(thread => thread.threadType === 'group');
         }
       } else if (activeTab === 'direct') {
         // Load direct message threads
@@ -3307,7 +3308,13 @@ const ChatScreen: React.FC<{
       }
       
       setThreads(threadsData);
-      console.log(`✅ Loaded ${threadsData.length} ${activeTab} threads`);
+      console.log(`✅ Loaded ${threadsData.length} ${activeTab} threads:`, threadsData.map(t => ({ 
+        id: t.id, 
+        name: t.name, 
+        type: t.type, 
+        threadType: t.threadType, 
+        otherUser: t.otherUser?.name || t.otherUser?.email 
+      })));
     } catch (err) {
       console.error('Error loading threads:', err);
       setError('Failed to load chats. Please try again.');
@@ -3334,6 +3341,14 @@ const ChatScreen: React.FC<{
   };
 
   const getDisplayName = (thread: any): string => {
+    console.log('🔍 getDisplayName called:', { 
+      activeTab, 
+      threadType: thread.threadType, 
+      type: thread.type, 
+      otherUser: thread.otherUser,
+      name: thread.name 
+    });
+    
     if (activeTab === 'notifications' && thread.event) {
       return thread.event.title;
     } else if (activeTab === 'direct' && thread.otherUser) {
@@ -3435,16 +3450,31 @@ const ChatScreen: React.FC<{
     }
   };
 
-  const handleCreateNotification = async () => {
-    if (!selectedEvent || !user) return;
+  const handleCreateNotification = () => {
+    if (!selectedEvent) return;
+    
+    // Set default title and content
+    setNotificationTitle(`Event Update: ${selectedEvent.title}`);
+    setNotificationContent('');
+    
+    // Close event selection modal and show notification input modal
+    setShowEventSelectionModal(false);
+    setShowNotificationModal(true);
+  };
+
+  const handleSendNotification = async () => {
+    if (!selectedEvent || !user || !notificationTitle.trim() || !notificationContent.trim()) {
+      Alert.alert('Error', 'Please enter both title and content for the notification.');
+      return;
+    }
     
     setCreatingNotification(true);
     try {
       // Create notification using the database function
       const { data, error } = await supabase.rpc('send_notification_to_rsvps', {
         p_event_id: selectedEvent.id,
-        p_title: `Event Update: ${selectedEvent.title}`,
-        p_content: `A new notification has been sent for "${selectedEvent.title}". Check your notifications for details.`,
+        p_title: notificationTitle.trim(),
+        p_content: notificationContent.trim(),
         p_created_by: user.id
       });
 
@@ -3453,8 +3483,10 @@ const ChatScreen: React.FC<{
         Alert.alert('Error', 'Failed to create notification. Please try again.');
       } else {
         Alert.alert('Success', 'Notification sent to all event attendees!');
-        setShowEventSelectionModal(false);
+        setShowNotificationModal(false);
         setSelectedEvent(null);
+        setNotificationTitle('');
+        setNotificationContent('');
         loadThreads(); // Refresh the threads list
       }
     } catch (error) {
@@ -3640,26 +3672,91 @@ const ChatScreen: React.FC<{
     setCreatingThread(false);
   };
 
-  const renderThread = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.chatItem}
-      onPress={() => handleThreadPress(item)}
-    >
-      <View style={styles.chatMainContent}>
-        <Text style={styles.chatName} numberOfLines={1} ellipsizeMode="tail">{getDisplayName(item)}</Text>
-        <Text style={styles.chatTitle} numberOfLines={1} ellipsizeMode="tail">{getDisplaySubtitle(item)}</Text>
-        <Text style={styles.chatMessage} numberOfLines={2} ellipsizeMode="tail">{getDisplayMessage(item)}</Text>
-      </View>
-      <View style={styles.chatRightContent}>
-        {item.unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{item.unreadCount}</Text>
+  const handleDeleteThread = async (thread: any) => {
+    if (!user || !thread) return;
+
+    // Check if user is admin and created this thread
+    const isAdmin = user.role === 'admin';
+    const isCreator = thread.created_by === user.id;
+    const isEventThread = thread.threadType === 'event' || thread.threadType === 'notification';
+
+    if (!isAdmin || !isCreator || !isEventThread) {
+      Alert.alert('Error', 'You can only delete event chats and notifications you created.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Thread',
+      `Are you sure you want to delete "${thread.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete the thread (this will cascade delete messages and memberships)
+              const { error } = await supabase
+                .from('chat_threads')
+                .delete()
+                .eq('id', thread.id);
+
+              if (error) {
+                console.error('Error deleting thread:', error);
+                Alert.alert('Error', 'Failed to delete thread. Please try again.');
+              } else {
+                Alert.alert('Success', 'Thread deleted successfully.');
+                loadThreads(); // Refresh the threads list
+              }
+            } catch (error) {
+              console.error('Error deleting thread:', error);
+              Alert.alert('Error', 'Failed to delete thread. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const renderThread = ({ item }: { item: any }) => {
+    // Check if current user can delete this thread
+    const canDelete = user?.role === 'admin' && 
+                     item.createdBy === user.id && 
+                     (item.threadType === 'event' || item.threadType === 'notification');
+
+    return (
+      <View style={styles.chatItemContainer}>
+        <TouchableOpacity 
+          style={styles.chatItem}
+          onPress={() => handleThreadPress(item)}
+        >
+          <View style={styles.chatMainContent}>
+            <Text style={styles.chatName} numberOfLines={1} ellipsizeMode="tail">{getDisplayName(item)}</Text>
+            <Text style={styles.chatTitle} numberOfLines={1} ellipsizeMode="tail">{getDisplaySubtitle(item)}</Text>
+            <Text style={styles.chatMessage} numberOfLines={2} ellipsizeMode="tail">{getDisplayMessage(item)}</Text>
           </View>
+          <View style={styles.chatRightContent}>
+            {item.unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadText}>{item.unreadCount}</Text>
+              </View>
+            )}
+            <Text style={styles.chatTime}>{formatTimeAgo(item.lastMessageAt)}</Text>
+          </View>
+        </TouchableOpacity>
+        
+        {/* Delete Button for Admin-Created Event Threads */}
+        {canDelete && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteThread(item)}
+          >
+            <Text style={styles.deleteButtonText}>🗑️</Text>
+          </TouchableOpacity>
         )}
-        <Text style={styles.chatTime}>{formatTimeAgo(item.lastMessageAt)}</Text>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -4155,6 +4252,85 @@ const ChatScreen: React.FC<{
         </View>
       </Modal>
 
+      {/* Notification Input Modal */}
+      <Modal
+        visible={showNotificationModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowNotificationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.staticModalContent}>
+            <Text style={styles.newChatModalTitle}>Create Event Notification</Text>
+            <Text style={styles.newChatModalSubtitle}>
+              Send a notification to all attendees of "{selectedEvent?.title}"
+            </Text>
+
+            {/* Notification Title Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Notification Title</Text>
+              <TextInput
+                style={styles.textInput}
+                value={notificationTitle}
+                onChangeText={setNotificationTitle}
+                placeholder="Enter notification title..."
+                maxLength={255}
+                returnKeyType="next"
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Notification Content Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Message Content</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                value={notificationContent}
+                onChangeText={setNotificationContent}
+                placeholder="Enter your notification message..."
+                multiline
+                numberOfLines={4}
+                maxLength={1000}
+                textAlignVertical="top"
+                returnKeyType="default"
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Action Buttons - Always visible at bottom */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowNotificationModal(false);
+                  setNotificationTitle('');
+                  setNotificationContent('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.confirmButton,
+                  (!notificationTitle.trim() || !notificationContent.trim() || creatingNotification) && styles.confirmButtonDisabled
+                ]}
+                onPress={handleSendNotification}
+                disabled={!notificationTitle.trim() || !notificationContent.trim() || creatingNotification}
+              >
+                <Text style={[
+                  styles.confirmButtonText,
+                  (!notificationTitle.trim() || !notificationContent.trim() || creatingNotification) && styles.confirmButtonTextDisabled
+                ]}>
+                  {creatingNotification ? 'Sending...' : 'Send Notification'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };
@@ -4330,6 +4506,57 @@ const ChatThreadScreen: React.FC<{
     return 'Chat';
   };
 
+  const handleDeleteThreadFromChat = async (threadToDelete: any) => {
+    if (!user || !threadToDelete) return;
+
+    // Check if user is admin and created this thread
+    const isAdmin = user.role === 'admin';
+    const isCreator = threadToDelete.createdBy === user.id;
+    const isEventThread = threadToDelete.threadType === 'event' || threadToDelete.threadType === 'notification';
+
+    if (!isAdmin || !isCreator || !isEventThread) {
+      Alert.alert('Error', 'You can only delete event chats and notifications you created.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Thread',
+      `Are you sure you want to delete "${threadToDelete.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete the thread (this will cascade delete messages and memberships)
+              const { error } = await supabase
+                .from('chat_threads')
+                .delete()
+                .eq('id', threadToDelete.id);
+
+              if (error) {
+                console.error('Error deleting thread:', error);
+                Alert.alert('Error', 'Failed to delete thread. Please try again.');
+              } else {
+                Alert.alert('Success', 'Thread deleted successfully.');
+                // Navigate back to chat list
+                if (navigateBack) {
+                  navigateBack();
+                } else {
+                  setCurrentScreen('chat');
+                }
+              }
+            } catch (error) {
+              console.error('Error deleting thread:', error);
+              Alert.alert('Error', 'Failed to delete thread. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const loadThreadMembers = async () => {
     if (!thread || thread.type !== 'group') return;
     
@@ -4424,24 +4651,60 @@ const ChatThreadScreen: React.FC<{
     setShowMembersModal(true);
   };
 
+  const handleDeleteMessage = async (message: ChatMessage) => {
+    if (!user) return;
+
+    const isOwnMessage = message.userId === user.id;
+    const isAdmin = user.role === 'admin';
+
+    if (!isOwnMessage && !isAdmin) {
+      Alert.alert('Error', 'You can only delete your own messages.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('chat_messages')
+                .delete()
+                .eq('id', message.id);
+
+              if (error) {
+                console.error('Error deleting message:', error);
+                Alert.alert('Error', 'Failed to delete message. Please try again.');
+              } else {
+                // Remove message from local state
+                setMessages(prevMessages => 
+                  prevMessages.filter(m => m.id !== message.id)
+                );
+              }
+            } catch (error) {
+              console.error('Error deleting message:', error);
+              Alert.alert('Error', 'Failed to delete message. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isOwnMessage = item.userId === user?.id;
+    const canDelete = isOwnMessage || user?.role === 'admin';
     
     return (
       <View style={[styles.messageContainer, isOwnMessage && styles.ownMessageContainer]}>
         {!isOwnMessage && (
           <AvatarComponent
-            name={(() => {
-              const userName = item.user?.name || 'Unknown User';
-              console.log('💬 Chat message debugging:', {
-                userId: item.userId,
-                userName: userName,
-                userData: item.user,
-                firstName: item.user?.first_name,
-                lastName: item.user?.last_name
-              });
-              return userName;
-            })()}
+            name={item.user?.name || 'Unknown User'}
             size={30}
             fallbackText="??"
             style={styles.messageAvatar}
@@ -4458,6 +4721,15 @@ const ChatThreadScreen: React.FC<{
           <Text style={[styles.messageTime, isOwnMessage && styles.ownMessageTime]}>
             {formatTime(item.createdAt)}
           </Text>
+          {/* Add delete button for messages that can be deleted */}
+          {canDelete && thread?.threadType !== 'notification' && (
+            <TouchableOpacity
+              style={styles.messageDeleteButton}
+              onPress={() => handleDeleteMessage(item)}
+            >
+              <Text style={styles.messageDeleteButtonText}>🗑️</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -4508,13 +4780,34 @@ const ChatThreadScreen: React.FC<{
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.chatHeaderTitle}>{getThreadTitle()}</Text>
-        {thread?.type === 'group' ? (
-          <TouchableOpacity onPress={() => setShowMembersModal(true)}>
-            <Text style={styles.membersButton}>Members</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 50 }} />
-        )}
+        <View style={styles.chatHeaderRight}>
+          {/* Delete button for admin-created event threads */}
+          {user?.role === 'admin' && 
+           thread?.createdBy === user.id && 
+           (thread?.threadType === 'event' || thread?.threadType === 'notification') && (
+            <TouchableOpacity 
+              style={styles.headerDeleteButton}
+              onPress={() => handleDeleteThreadFromChat(thread)}
+            >
+              <Text style={styles.headerDeleteButtonText}>🗑️</Text>
+            </TouchableOpacity>
+          )}
+          
+          {/* Members button for group chats */}
+          {thread?.type === 'group' && (
+            <TouchableOpacity onPress={() => setShowMembersModal(true)}>
+              <Text style={styles.membersButton}>Members</Text>
+            </TouchableOpacity>
+          )}
+          
+          {/* Spacer if no right buttons */}
+          {!(user?.role === 'admin' && 
+             thread?.createdBy === user.id && 
+             (thread?.threadType === 'event' || thread?.threadType === 'notification')) &&
+           thread?.type !== 'group' && (
+            <View style={{ width: 50 }} />
+          )}
+        </View>
       </View>
 
       <View style={styles.chatContentContainer}>
@@ -4529,34 +4822,45 @@ const ChatThreadScreen: React.FC<{
           keyboardShouldPersistTaps="handled"
         />
 
-        {/* Message Input */}
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 108 : 0}
-          style={styles.keyboardAvoidingInput}
-        >
-          <View style={styles.messageInputContainer}>
-            <TextInput
-              style={styles.messageInput}
-              value={newMessage}
-              onChangeText={setNewMessage}
-              placeholder="Type a message..."
-              multiline
-              maxLength={1000}
-              returnKeyType="send"
-              onSubmitEditing={sendMessage}
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
-              onPress={sendMessage}
-              disabled={!newMessage.trim() || sending}
-            >
-              <Text style={styles.sendButtonText}>
-                {sending ? '...' : 'Send'}
-              </Text>
-            </TouchableOpacity>
+        {/* Message Input - Hide for notification threads */}
+        {thread?.threadType !== 'notification' && (
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 108 : 0}
+            style={styles.keyboardAvoidingInput}
+          >
+            <View style={styles.messageInputContainer}>
+              <TextInput
+                style={styles.messageInput}
+                value={newMessage}
+                onChangeText={setNewMessage}
+                placeholder="Type a message..."
+                multiline
+                maxLength={1000}
+                returnKeyType="send"
+                onSubmitEditing={sendMessage}
+              />
+              <TouchableOpacity
+                style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
+                onPress={sendMessage}
+                disabled={!newMessage.trim() || sending}
+              >
+                <Text style={styles.sendButtonText}>
+                  {sending ? '...' : 'Send'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        )}
+        
+        {/* Notification threads are read-only */}
+        {thread?.threadType === 'notification' && (
+          <View style={styles.readOnlyNotice}>
+            <Text style={styles.readOnlyNoticeText}>
+              This is a read-only notification thread
+            </Text>
           </View>
-        </KeyboardAvoidingView>
+        )}
       </View>
 
       {/* Members Modal */}
@@ -5187,13 +5491,18 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 20,
   },
+  chatItemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 6,
+  },
   chatItem: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -5236,6 +5545,19 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '500',
     marginBottom: 4,
+  },
+  deleteButton: {
+    marginLeft: 8,
+    padding: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 40,
+    minHeight: 40,
+  },
+  deleteButtonText: {
+    fontSize: 16,
   },
   unreadBadge: {
     backgroundColor: '#D29507',
@@ -5355,6 +5677,23 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
+  chatHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerDeleteButton: {
+    padding: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 36,
+    minHeight: 36,
+  },
+  headerDeleteButtonText: {
+    fontSize: 14,
+  },
   keyboardAvoidingView: {
     flex: 1,
   },
@@ -5463,12 +5802,144 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  readOnlyNotice: {
+    backgroundColor: '#F3F4F6',
+    padding: 16,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  readOnlyNoticeText: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  // Notification Input Modal Styles
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#265451',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  confirmButton: {
+    backgroundColor: '#D29507',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  confirmButtonTextDisabled: {
+    color: '#999',
+  },
   // New Chat Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
+  },
+  staticModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
+    position: 'absolute',
+    top: '15%',
+    left: '5%',
+    height: 410, // Added 10px for breathing room below buttons
+  },
+  // Swipe-to-delete styles
+  deleteAction: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    paddingRight: 20,
+  },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#6B7280',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '500',
+  },
+  // Inline message delete button styles
+  messageDeleteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#6B7280',
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0.7,
+  },
+  messageDeleteButtonText: {
+    fontSize: 12,
+    color: 'white',
   },
   newChatModal: {
     backgroundColor: 'white',
@@ -6106,10 +6577,6 @@ const styles = StyleSheet.create({
     color: '#265451',
   },
   // Event selection modal styles
-  eventsList: {
-    maxHeight: 300,
-    marginVertical: 16,
-  },
   eventOption: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -7,9 +7,11 @@ export interface ChatThread {
   name: string | null;
   description: string | null;
   type: 'group' | 'dm' | 'event' | 'organization';
+  threadType: 'group' | 'dm' | 'event' | 'notification'; // New field for thread classification
   isPrivate: boolean;
   organizationId: string | null;
   eventId: string | null;
+  createdBy: string | null; // User who created the thread
   allowMemberInvites: boolean;
   allowFileUploads: boolean;
   maxMembers: number | null;
@@ -29,8 +31,10 @@ export interface ChatThread {
   otherUser?: {
     id: string;
     name: string;
+    first_name?: string;
+    last_name?: string;
     email: string;
-    profile_image_url: string | null;
+    avatar_url: string | null;
   };
 }
 
@@ -110,13 +114,16 @@ export class ChatService {
     
     let query = `${this.SUPABASE_URL}/rest/v1/chat_threads?select=*,chat_memberships!inner(user_id,unread_count,last_read_at)`;
     
-    // Add type filter
+    // Add type filter based on thread_type column
     if (type === 'announcements') {
-      query += '&type=eq.event&event_id=not.is.null';
+      // Show notification threads (read-only event notifications)
+      query += '&thread_type=eq.notification';
     } else if (type === 'group') {
-      query += '&type=in.(group,event)';
+      // Show group and event chat threads (interactive chats)
+      query += '&thread_type=in.(group,event)';
     } else if (type === 'direct') {
-      query += '&type=eq.dm';
+      // Show direct message threads
+      query += '&thread_type=eq.dm';
     }
     
     // Filter by user membership
@@ -590,9 +597,11 @@ export class ChatService {
       name: thread.name,
       description: thread.description,
       type: thread.type,
+      threadType: thread.thread_type || thread.type, // Use thread_type if available, fallback to type
       isPrivate: thread.is_private,
       organizationId: thread.organization_id,
       eventId: thread.event_id,
+      createdBy: thread.created_by,
       allowMemberInvites: thread.allow_member_invites,
       allowFileUploads: thread.allow_file_uploads,
       maxMembers: thread.max_members,
@@ -632,17 +641,44 @@ export class ChatService {
     if (thread.type === 'dm') {
       try {
         const membersResponse = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${thread.id}&user_id=neq.${userId}&select=user_id,users!inner(id,name,email,profile_image_url)`,
+          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${thread.id}&user_id=neq.${userId}&select=user_id,users!inner(id,name,first_name,last_name,email,avatar_url)`,
           { headers: this.getHeaders() }
         );
         if (membersResponse.ok) {
           const members = await membersResponse.json();
           if (members.length > 0) {
-            enriched.otherUser = members[0].users;
+            const otherUser = members[0].users;
+            // Construct name from first_name and last_name if name is missing
+            if (!otherUser.name && (otherUser.first_name || otherUser.last_name)) {
+              otherUser.name = `${otherUser.first_name || ''} ${otherUser.last_name || ''}`.trim();
+            }
+            // Fallback to email if no name available
+            if (!otherUser.name && otherUser.email) {
+              otherUser.name = otherUser.email.split('@')[0]; // Use email prefix as fallback
+            }
+            enriched.otherUser = otherUser;
           }
         }
       } catch (error) {
         console.error('Error fetching other user data:', error);
+      }
+    }
+
+    // Add last message data if thread has messages
+    if (thread.last_message_at) {
+      try {
+        const lastMessageResponse = await fetch(
+          `${this.SUPABASE_URL}/rest/v1/chat_messages?thread_id=eq.${thread.id}&order=created_at.desc&limit=1`,
+          { headers: this.getHeaders() }
+        );
+        if (lastMessageResponse.ok) {
+          const messages = await lastMessageResponse.json();
+          if (messages.length > 0) {
+            enriched.lastMessage = await this.enrichMessage(messages[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching last message:', error);
       }
     }
 
