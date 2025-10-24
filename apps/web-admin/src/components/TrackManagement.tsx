@@ -1125,6 +1125,25 @@ const TrackManagement: React.FC<TrackManagementProps> = ({ event, onClose, onEve
         >
           Close
         </button>
+        <button
+          onClick={() => {
+            // Save any pending changes and close
+            onEventUpdated();
+            onClose();
+          }}
+          style={{
+            backgroundColor: '#10B981',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+          }}
+        >
+          Save Changes
+        </button>
       </div>
     </div>
   );
