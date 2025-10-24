@@ -7,6 +7,9 @@ export interface UserWithRole {
   id: string;
   email: string;
   name: string;
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
   role: 'admin' | 'business' | 'general';
   is_active: boolean;
   last_login_at: string | null;
@@ -35,16 +38,18 @@ export const roleManagement = {
    */
   async getAllUsersWithRoles(): Promise<{ success: boolean; users: UserWithRole[]; error?: string }> {
     try {
+      console.log('🔧 roleManagement.getAllUsersWithRoles() called');
       const { data, error } = await serviceRoleSupabase.rpc('get_all_users_with_roles');
       
       if (error) {
-        console.error('Error fetching users with roles:', error);
+        console.error('❌ Error fetching users with roles:', error);
         return { success: false, users: [], error: error.message };
       }
       
+      console.log('✅ Users fetched successfully:', data?.length || 0);
       return { success: true, users: data || [] };
     } catch (error: any) {
-      console.error('Role management error:', error);
+      console.error('💥 Role management error:', error);
       return { success: false, users: [], error: error.message };
     }
   },
@@ -134,5 +139,54 @@ export const roleManagement = {
   async isCurrentUserAdmin(): Promise<boolean> {
     const result = await this.getCurrentUserRole();
     return result.success && result.role === 'admin';
+  },
+
+  /**
+   * Delete a user (admin only)
+   */
+  async deleteUser(userId: string, deletedByUserId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // First, check if the user exists and get their details
+      const { data: userToDelete, error: fetchError } = await serviceRoleSupabase
+        .from('users')
+        .select('id, email, role')
+        .eq('id', userId)
+        .single();
+
+      if (fetchError || !userToDelete) {
+        return { success: false, error: 'User not found' };
+      }
+
+      // Prevent deleting the last admin
+      if (userToDelete.role === 'admin') {
+        const { data: adminCount, error: countError } = await serviceRoleSupabase
+          .from('users')
+          .select('id', { count: 'exact' })
+          .eq('role', 'admin')
+          .eq('is_active', true);
+
+        if (countError) {
+          return { success: false, error: 'Failed to check admin count' };
+        }
+
+        if (adminCount && adminCount.length <= 1) {
+          return { success: false, error: 'Cannot delete the last admin user' };
+        }
+      }
+
+      // Delete user from auth (this will cascade to users table due to foreign key)
+      const { error: authError } = await serviceRoleSupabase.auth.admin.deleteUser(userId);
+      
+      if (authError) {
+        console.error('Error deleting user from auth:', authError);
+        return { success: false, error: `Failed to delete user: ${authError.message}` };
+      }
+
+      console.log(`✅ User ${userToDelete.email} deleted successfully by admin`);
+      return { success: true };
+    } catch (error: any) {
+      console.error('User deletion error:', error);
+      return { success: false, error: error.message };
+    }
   }
 };

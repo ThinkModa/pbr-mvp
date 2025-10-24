@@ -20,27 +20,50 @@ export interface EventWithActivities extends Event {
 export class EventsService {
   // Get all events with their activities
   static async getEvents(): Promise<EventWithActivities[]> {
-    const { data: events, error } = await supabase
-      .from('events')
-      .select(`
-        *,
-        activities (*)
-      `)
-      .order('start_time', { ascending: true });
+    console.log('🔧 EventsService.getEvents() called');
+    const serviceClient = getServiceRoleClient();
+    console.log('🔧 Service client created');
+    
+    try {
+      const { data: events, error } = await serviceClient
+        .from('events')
+        .select(`
+          *,
+          activities (*)
+        `)
+        .order('start_time', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching events:', error);
+      if (error) {
+        console.error('❌ Error fetching events:', error);
+        throw error;
+      }
+
+      console.log('✅ Events fetched successfully:', events?.length || 0);
+      
+      // Transform events to include expected properties
+      const transformedEvents = (events || []).map(event => {
+        console.log('🔍 Raw event data:', {
+          id: event.id,
+          title: event.title,
+          start_time: event.start_time,
+          end_time: event.end_time
+        });
+        
+        return {
+          ...event,
+          name: event.title, // Alias for title
+          start_date: event.start_time, // Alias for start_time
+          end_date: event.end_time, // Alias for end_time
+          has_tracks: event.has_tracks || false, // Default to false if not set
+        };
+      });
+      
+      console.log('🔍 Transformed events:', transformedEvents);
+      return transformedEvents;
+    } catch (error) {
+      console.error('💥 Exception in getEvents:', error);
       throw error;
     }
-
-    // Transform events to include expected properties
-    return (events || []).map(event => ({
-      ...event,
-      name: event.title, // Alias for title
-      start_date: event.start_time, // Alias for start_time
-      end_date: event.end_time, // Alias for end_time
-      has_tracks: event.has_tracks || false, // Default to false if not set
-    }));
   }
 
   // Create a new event
@@ -97,9 +120,6 @@ export class EventsService {
             start_time: eventData.start_date,
             end_time: eventData.end_date,
             location: eventData.location,
-            location_address: eventData.location.address,
-            latitude: eventData.location.coordinates?.lat,
-            longitude: eventData.location.coordinates?.lng,
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
@@ -132,15 +152,7 @@ export class EventsService {
         location: typeof activity.location === 'string' 
           ? { name: activity.location } 
           : activity.location,
-        location_address: typeof activity.location === 'string' 
-          ? activity.location 
-          : activity.location.address,
-        latitude: typeof activity.location === 'string' 
-          ? undefined 
-          : activity.location.coordinates?.lat,
-        longitude: typeof activity.location === 'string' 
-          ? undefined 
-          : activity.location.coordinates?.lng,
+        // Removed location_address, latitude, longitude - these columns don't exist in activities table
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
@@ -168,6 +180,14 @@ export class EventsService {
     if (fetchError) {
       console.error('Error fetching complete event:', fetchError);
       throw fetchError;
+    }
+
+    // Send push notification for new event
+    try {
+      await this.sendEventCreatedNotification(completeEvent);
+    } catch (notificationError) {
+      console.error('❌ Error sending event created notification:', notificationError);
+      // Don't throw - event creation should succeed even if notification fails
     }
 
     return completeEvent;
@@ -213,6 +233,7 @@ export class EventsService {
       }>;
     }
   ): Promise<EventWithActivities> {
+    console.log('🔧 EventsService.updateEvent() called for eventId:', eventId);
     const serviceClient = getServiceRoleClient();
 
     // Update the event
@@ -224,9 +245,7 @@ export class EventsService {
             start_time: eventData.start_date,
             end_time: eventData.end_date,
             location: eventData.location,
-            location_address: eventData.location.address,
-            latitude: eventData.location.coordinates?.lat,
-            longitude: eventData.location.coordinates?.lng,
+            // Removed location_address - this column doesn't exist in events table
             max_capacity: eventData.capacity,
             price: eventData.price ? eventData.price * 100 : undefined, // Convert to cents
             is_free: !eventData.price,
@@ -243,9 +262,11 @@ export class EventsService {
       .eq('id', eventId);
 
     if (eventError) {
-      console.error('Error updating event:', eventError);
+      console.error('❌ Error updating event:', eventError);
       throw eventError;
     }
+
+    console.log('✅ Event updated successfully');
 
     // Delete existing activities
     const { error: deleteError } = await serviceClient
@@ -269,15 +290,7 @@ export class EventsService {
         location: typeof activity.location === 'string' 
           ? { name: activity.location } 
           : activity.location,
-        location_address: typeof activity.location === 'string' 
-          ? activity.location 
-          : activity.location.address,
-        latitude: typeof activity.location === 'string' 
-          ? undefined 
-          : activity.location.coordinates?.lat,
-        longitude: typeof activity.location === 'string' 
-          ? undefined 
-          : activity.location.coordinates?.lng,
+        // Removed location_address - this column doesn't exist in activities table
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
@@ -305,6 +318,14 @@ export class EventsService {
     if (fetchError) {
       console.error('Error fetching updated event:', fetchError);
       throw fetchError;
+    }
+
+    // Send push notification for event update
+    try {
+      await this.sendEventUpdatedNotification(completeEvent);
+    } catch (notificationError) {
+      console.error('❌ Error sending event updated notification:', notificationError);
+      // Don't throw - event update should succeed even if notification fails
     }
 
     return completeEvent;
@@ -339,7 +360,9 @@ export class EventsService {
 
   // Get a single event by ID
   static async getEventById(eventId: string): Promise<EventWithActivities | null> {
-    const { data: event, error } = await supabase
+    const serviceClient = getServiceRoleClient();
+    
+    const { data: event, error } = await serviceClient
       .from('events')
       .select(`
         *,
@@ -358,9 +381,10 @@ export class EventsService {
 
   // Get upcoming events (for speaker assignment)
   static async getUpcomingEvents(): Promise<Event[]> {
+    const serviceClient = getServiceRoleClient();
     const now = new Date().toISOString();
     
-    const { data: events, error } = await supabase
+    const { data: events, error } = await serviceClient
       .from('events')
       .select('*')
       .gte('start_time', now)
@@ -413,7 +437,9 @@ export class EventsService {
 
   // Get speaker's assigned events
   static async getSpeakerEvents(speakerId: string): Promise<string[]> {
-    const { data: assignments, error } = await supabase
+    const serviceClient = getServiceRoleClient();
+    
+    const { data: assignments, error } = await serviceClient
       .from('event_speakers')
       .select('event_id')
       .eq('speaker_id', speakerId);
@@ -424,5 +450,131 @@ export class EventsService {
     }
 
     return assignments?.map(a => a.event_id) || [];
+  }
+
+  // Send push notification for new event creation
+  private static async sendEventCreatedNotification(event: any): Promise<void> {
+    try {
+      console.log('🔔 Sending event created notification for:', event.title);
+      
+      // Get all users who should receive notifications
+      const { data: users, error } = await getServiceRoleClient()
+        .from('users')
+        .select('id, push_tokens')
+        .eq('is_active', true)
+        .not('push_tokens', 'is', null);
+
+      if (error) {
+        console.error('❌ Error fetching users for notification:', error);
+        return;
+      }
+
+      if (!users || users.length === 0) {
+        console.log('ℹ️ No users with push tokens found');
+        return;
+      }
+
+      // Send push notification to all users
+      const pushTokens = users.flatMap(user => user.push_tokens || []);
+      
+      if (pushTokens.length === 0) {
+        console.log('ℹ️ No push tokens found');
+        return;
+      }
+
+      const notification = {
+        title: 'New Event Created',
+        body: `A new event "${event.title}" has been created. Check it out and RSVP!`,
+        data: {
+          eventId: event.id,
+          type: 'event_created'
+        }
+      };
+
+      await this.sendExpoPushNotifications(pushTokens, notification);
+      console.log('✅ Event created notification sent to', pushTokens.length, 'users');
+
+    } catch (error) {
+      console.error('❌ Error sending event created notification:', error);
+    }
+  }
+
+  // Send push notification for event updates
+  private static async sendEventUpdatedNotification(event: any): Promise<void> {
+    try {
+      console.log('🔔 Sending event updated notification for:', event.title);
+      
+      // Get all users who RSVP'd to this event
+      const { data: rsvps, error } = await getServiceRoleClient()
+        .from('event_rsvps')
+        .select(`
+          user_id,
+          users!inner(id, push_tokens)
+        `)
+        .eq('event_id', event.id)
+        .eq('status', 'confirmed');
+
+      if (error) {
+        console.error('❌ Error fetching RSVPs for notification:', error);
+        return;
+      }
+
+      if (!rsvps || rsvps.length === 0) {
+        console.log('ℹ️ No RSVPs found for event');
+        return;
+      }
+
+      // Send push notification to all RSVP'd users
+      const pushTokens = rsvps.flatMap(rsvp => (rsvp.users as any)?.push_tokens || []);
+      
+      if (pushTokens.length === 0) {
+        console.log('ℹ️ No push tokens found for RSVP users');
+        return;
+      }
+
+      const notification = {
+        title: 'Event Updated',
+        body: `The details for "${event.title}" have been updated. Please check the new information.`,
+        data: {
+          eventId: event.id,
+          type: 'event_updated'
+        }
+      };
+
+      await this.sendExpoPushNotifications(pushTokens, notification);
+      console.log('✅ Event updated notification sent to', pushTokens.length, 'users');
+
+    } catch (error) {
+      console.error('❌ Error sending event updated notification:', error);
+    }
+  }
+
+  // Send Expo push notifications
+  private static async sendExpoPushNotifications(pushTokens: string[], notification: any): Promise<void> {
+    try {
+      const messages = pushTokens.map(token => ({
+        to: token,
+        title: notification.title,
+        body: notification.body,
+        data: notification.data,
+        sound: 'default',
+      }));
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messages),
+      });
+
+      const result = await response.json();
+      console.log('✅ Push notifications sent:', result);
+
+    } catch (error) {
+      console.error('❌ Error sending Expo push notifications:', error);
+    }
   }
 }

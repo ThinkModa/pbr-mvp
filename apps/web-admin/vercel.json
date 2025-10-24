@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/confirm-email",
+      "destination": "/"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/"
+    }
+  ]
+}

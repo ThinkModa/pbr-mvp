@@ -9,11 +9,23 @@ export interface EventTrack {
   max_capacity?: number;
   display_order: number;
   is_active: boolean;
+  track_group_id?: string;
   created_at: string;
   updated_at: string;
   // Computed fields
   current_rsvps?: number;
   activities?: any[];
+  track_group?: TrackGroup;
+}
+
+export interface TrackGroup {
+  id: string;
+  event_id: string;
+  name: string;
+  description?: string;
+  is_mutually_exclusive: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TrackActivity {
@@ -29,6 +41,15 @@ export interface CreateTrackData {
   description?: string;
   max_capacity?: number;
   display_order?: number;
+  track_group_id?: string;
+}
+
+export interface CreateTrackGroupData {
+  event_id: string;
+  name: string;
+  description?: string;
+  is_mutually_exclusive?: boolean;
+  trackIds?: string[];
 }
 
 export interface UpdateTrackData {
@@ -37,12 +58,14 @@ export interface UpdateTrackData {
   max_capacity?: number;
   display_order?: number;
   is_active?: boolean;
+  track_group_id?: string;
 }
 
 export class TrackService {
   // Get all tracks for an event
   static async getEventTracks(eventId: string): Promise<EventTrack[]> {
-    const { data: tracks, error } = await supabase
+    const serviceClient = getServiceRoleClient();
+    const { data: tracks, error } = await serviceClient
       .from('event_tracks')
       .select('*')
       .eq('event_id', eventId)
@@ -58,7 +81,8 @@ export class TrackService {
 
   // Get a single track by ID
   static async getTrack(trackId: string): Promise<EventTrack> {
-    const { data: track, error } = await supabase
+    const serviceClient = getServiceRoleClient();
+    const { data: track, error } = await serviceClient
       .from('event_tracks')
       .select('*')
       .eq('id', trackId)
@@ -136,7 +160,8 @@ export class TrackService {
 
   // Get activities assigned to a track
   static async getTrackActivities(trackId: string): Promise<any[]> {
-    const { data: trackActivities, error } = await supabase
+    const serviceClient = getServiceRoleClient();
+    const { data: trackActivities, error } = await serviceClient
       .from('track_activities')
       .select(`
         *,
@@ -197,8 +222,9 @@ export class TrackService {
 
   // Get track capacity information
   static async getTrackCapacity(trackId: string): Promise<{ current_rsvps: number; max_capacity?: number }> {
+    const serviceClient = getServiceRoleClient();
     // Get current RSVPs for this track
-    const { data: rsvps, error: rsvpError } = await supabase
+    const { data: rsvps, error: rsvpError } = await serviceClient
       .from('event_rsvps')
       .select('id')
       .eq('track_id', trackId)
@@ -223,9 +249,10 @@ export class TrackService {
   // Get available activities for an event (not assigned to any track)
   static async getAvailableActivities(eventId: string): Promise<any[]> {
     console.log('TrackService.getAvailableActivities called with eventId:', eventId);
+    const serviceClient = getServiceRoleClient();
     
     // First, get all activities for the event
-    const { data: allActivities, error: allActivitiesError } = await supabase
+    const { data: allActivities, error: allActivitiesError } = await serviceClient
       .from('activities')
       .select(`
         id,
@@ -244,7 +271,7 @@ export class TrackService {
     console.log('All activities for event:', allActivities);
 
     // Then, get all assigned activity IDs
-    const { data: assignedActivities, error: assignedError } = await supabase
+    const { data: assignedActivities, error: assignedError } = await serviceClient
       .from('track_activities')
       .select('activity_id')
       .not('activity_id', 'is', null);
@@ -263,5 +290,122 @@ export class TrackService {
     console.log('Available activities after filtering:', availableActivities);
 
     return availableActivities;
+  }
+
+  // Track Group Methods
+
+  // Create a track group
+  static async createTrackGroup(groupData: CreateTrackGroupData): Promise<TrackGroup> {
+    const serviceClient = getServiceRoleClient();
+    
+    // Create the group
+    const { data: group, error: groupError } = await serviceClient
+      .from('track_groups')
+      .insert({
+        event_id: groupData.event_id,
+        name: groupData.name,
+        description: groupData.description,
+        is_mutually_exclusive: groupData.is_mutually_exclusive ?? true,
+      })
+      .select()
+      .single();
+    
+    if (groupError) {
+      console.error('Error creating track group:', groupError);
+      throw groupError;
+    }
+    
+    // Assign tracks to group if provided
+    if (groupData.trackIds && groupData.trackIds.length > 0) {
+      const { error: updateError } = await serviceClient
+        .from('event_tracks')
+        .update({ track_group_id: group.id })
+        .in('id', groupData.trackIds);
+      
+      if (updateError) {
+        console.error('Error assigning tracks to group:', updateError);
+        throw updateError;
+      }
+    }
+    
+    return group;
+  }
+
+  // Get track groups for an event
+  static async getTrackGroups(eventId: string): Promise<TrackGroup[]> {
+    const serviceClient = getServiceRoleClient();
+    
+    const { data, error } = await serviceClient
+      .from('track_groups')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching track groups:', error);
+      throw error;
+    }
+    
+    return data || [];
+  }
+
+  // Update a track group
+  static async updateTrackGroup(groupId: string, updates: Partial<TrackGroup>): Promise<void> {
+    const serviceClient = getServiceRoleClient();
+    
+    const { error } = await serviceClient
+      .from('track_groups')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', groupId);
+    
+    if (error) {
+      console.error('Error updating track group:', error);
+      throw error;
+    }
+  }
+
+  // Delete a track group
+  static async deleteTrackGroup(groupId: string): Promise<void> {
+    const serviceClient = getServiceRoleClient();
+    
+    // Remove track_group_id from tracks first
+    await serviceClient
+      .from('event_tracks')
+      .update({ track_group_id: null })
+      .eq('track_group_id', groupId);
+    
+    // Delete the group
+    const { error } = await serviceClient
+      .from('track_groups')
+      .delete()
+      .eq('id', groupId);
+    
+    if (error) {
+      console.error('Error deleting track group:', error);
+      throw error;
+    }
+  }
+
+  // Get tracks with their groups
+  static async getEventTracksWithGroups(eventId: string): Promise<EventTrack[]> {
+    const serviceClient = getServiceRoleClient();
+    const { data: tracks, error } = await serviceClient
+      .from('event_tracks')
+      .select(`
+        *,
+        track_group:track_groups(*)
+      `)
+      .eq('event_id', eventId)
+      .order('display_order', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching event tracks with groups:', error);
+      throw error;
+    }
+
+    return tracks || [];
   }
 }

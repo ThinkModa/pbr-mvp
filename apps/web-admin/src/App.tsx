@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import EmailConfirmationPage from './pages/EmailConfirmationPage';
+import PasswordResetPage from './pages/PasswordResetPage';
 
 type Page = 'dashboard' | 'events' | 'speakers' | 'organizations' | 'users' | 'settings';
 
@@ -8,10 +10,28 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
+  const [authPage, setAuthPage] = useState<'none' | 'confirm-email' | 'reset-password'>('none');
 
-  // Check for existing session on app load
+  // Check for authentication pages and existing session on app load
   useEffect(() => {
-    const checkSession = () => {
+    const checkAuthPagesAndSession = () => {
+      // Check if we're on an authentication page
+      const path = window.location.pathname;
+      const search = window.location.search;
+      
+      if (path === '/confirm-email' || search.includes('type=signup')) {
+        setAuthPage('confirm-email');
+        setIsLoading(false);
+        return;
+      }
+      
+      if (path === '/reset-password' || search.includes('type=recovery')) {
+        setAuthPage('reset-password');
+        setIsLoading(false);
+        return;
+      }
+
+      // Check for existing session
       const session = localStorage.getItem('pbr-admin-session');
       if (session) {
         try {
@@ -31,7 +51,7 @@ function App() {
       setIsLoading(false);
     };
 
-    checkSession();
+    checkAuthPagesAndSession();
   }, []);
 
   const handleLoginSuccess = () => {
@@ -86,6 +106,15 @@ function App() {
         `}</style>
       </div>
     );
+  }
+
+  // Show authentication pages if we're on one
+  if (authPage === 'confirm-email') {
+    return <EmailConfirmationPage />;
+  }
+
+  if (authPage === 'reset-password') {
+    return <PasswordResetPage />;
   }
 
   if (!isLoggedIn) {

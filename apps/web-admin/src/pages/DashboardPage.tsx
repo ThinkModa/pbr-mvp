@@ -15,6 +15,7 @@ import TrackManagement from '../components/TrackManagement';
 import { ImageUploadService } from '../services/imageUploadService';
 import BulkImportService, { ImportUser, FieldMapping, ImportResult } from '../services/bulkImportService';
 import ManualUserCreation from '../components/ManualUserCreation';
+import AvatarComponent from '../components/AvatarComponent';
 // import { UserRoleManagement } from '../components/UserRoleManagement'; // Unused
 
 // Activity categories with colors and icons
@@ -29,8 +30,9 @@ const ACTIVITY_CATEGORIES = [
   { id: 'other', name: 'Other', color: '#9CA3AF', icon: '📝' }
 ];
 
-// Time options in 30-minute increments from 8:00 AM to 9:00 PM
+// Time options in 30-minute increments from 7:00 AM to 12:00 AM (midnight)
 const TIME_OPTIONS = [
+  '7:00 AM', '7:30 AM',
   '8:00 AM', '8:30 AM',
   '9:00 AM', '9:30 AM',
   '10:00 AM', '10:30 AM',
@@ -44,7 +46,10 @@ const TIME_OPTIONS = [
   '6:00 PM', '6:30 PM',
   '7:00 PM', '7:30 PM',
   '8:00 PM', '8:30 PM',
-  '9:00 PM'
+  '9:00 PM', '9:30 PM',
+  '10:00 PM', '10:30 PM',
+  '11:00 PM', '11:30 PM',
+  '12:00 AM'
 ];
 
 // Helper function to convert 12-hour format to 24-hour format for database
@@ -88,15 +93,71 @@ const convertTo12Hour = (time24Hour: string): string => {
 const formatFriendlyDate = (dateString: string): string => {
   if (!dateString) return '';
   
-  const date = new Date(dateString);
+  console.log('🔍 formatFriendlyDate input:', dateString);
   
-  // Format as "Mon, Jun 17, 2025" (abbreviated weekday, abbreviated month, day, year)
-  return date.toLocaleDateString('en-US', { 
+  // Handle different date formats
+  let date: Date;
+  
+  // If it's already a full datetime string, use it as is
+  if (dateString.includes('T') || dateString.includes(' ')) {
+    date = new Date(dateString);
+  } else {
+    // If it's just a date, add time to avoid timezone offset issues
+    date = new Date(dateString + 'T00:00:00');
+  }
+  
+  console.log('🔍 Parsed date:', date);
+  
+  if (isNaN(date.getTime())) {
+    console.error('❌ Invalid date:', dateString);
+    return 'Invalid Date';
+  }
+  
+  const formatted = date.toLocaleDateString('en-US', { 
     weekday: 'short', 
     month: 'short', 
     day: 'numeric',
     year: 'numeric'
   });
+  
+  console.log('🔍 Formatted date:', formatted);
+  return formatted;
+};
+
+// Helper function to format date and time together
+const formatFriendlyDateTime = (dateString: string): string => {
+  if (!dateString) return '';
+  
+  // Handle different date formats
+  let date: Date;
+  
+  // If it's already a full datetime string, use it as is
+  if (dateString.includes('T') || dateString.includes(' ')) {
+    date = new Date(dateString);
+  } else {
+    // If it's just a date, add time to avoid timezone offset issues
+    date = new Date(dateString + 'T00:00:00');
+  }
+  
+  if (isNaN(date.getTime())) {
+    console.error('❌ Invalid date:', dateString);
+    return 'Invalid Date';
+  }
+  
+  const formatted = date.toLocaleDateString('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+  
+  const time = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+  
+  return `${formatted} at ${time}`;
 };
 
 // Modern Calendar Component
@@ -105,11 +166,26 @@ const ModernCalendar: React.FC<{
   onDateSelect: (date: string) => void;
   onClose: () => void;
 }> = ({ selectedDate, onDateSelect, onClose }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Initialize currentMonth to the selected date's month, or today if no date selected
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    if (selectedDate) {
+      const date = new Date(selectedDate + 'T00:00:00'); // Add time to avoid timezone issues
+      return date;
+    }
+    return new Date();
+  });
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
   const today = new Date();
-  const selectedDateObj = selectedDate ? new Date(selectedDate) : today;
+  const selectedDateObj = selectedDate ? new Date(selectedDate + 'T00:00:00') : today;
+
+  // Update currentMonth when selectedDate changes
+  useEffect(() => {
+    if (selectedDate) {
+      const date = new Date(selectedDate + 'T00:00:00');
+      setCurrentMonth(date);
+    }
+  }, [selectedDate]);
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -117,29 +193,33 @@ const ModernCalendar: React.FC<{
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+    // Adjust for Monday-first calendar (JavaScript getDay() returns 0 for Sunday, 1 for Monday, etc.)
+    // We want Monday to be 0, Tuesday to be 1, etc.
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7;
 
     const days = [];
     
     // Add previous month's trailing days
     const prevMonth = new Date(year, month - 1, 0);
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      const prevDate = prevMonth.getDate() - i;
       days.push({
-        date: prevMonth.getDate() - i,
+        date: prevDate,
         isCurrentMonth: false,
         isToday: false,
         isSelected: false,
-        fullDate: new Date(year, month - 1, prevMonth.getDate() - i).toISOString().split('T')[0]
+        fullDate: new Date(year, month - 1, prevDate).toISOString().split('T')[0]
       });
     }
 
     // Add current month's days
     for (let day = 1; day <= daysInMonth; day++) {
       const fullDate = new Date(year, month, day).toISOString().split('T')[0];
+      const todayDate = today.toISOString().split('T')[0];
       days.push({
         date: day,
         isCurrentMonth: true,
-        isToday: fullDate === today.toISOString().split('T')[0],
+        isToday: fullDate === todayDate,
         isSelected: fullDate === selectedDate,
         fullDate
       });
@@ -479,12 +559,14 @@ const ModernTimePicker: React.FC<{
 };
 
 interface Activity {
+  id: string; // Add unique ID for React keys
   name: string;
   description: string;
   startDate: string;
   startTime: string;
   endDate: string;
   endTime: string;
+  locationName: string; // Custom location name field
   location: {
     name: string;
     address?: string;
@@ -848,6 +930,28 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
     }
   };
 
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (!window.confirm(`Are you sure you want to delete user "${userEmail}"? This action cannot be undone and will remove them from the mobile app.`)) {
+      return;
+    }
+
+    try {
+      const { roleManagement } = await import('../utils/roleManagement');
+      const result = await roleManagement.deleteUser(userId, '11111111-1111-1111-1111-111111111111'); // Mock admin user ID
+      
+      if (result.success) {
+        // Remove user from local state
+        setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+        alert(`User "${userEmail}" has been deleted successfully.`);
+      } else {
+        alert(`Failed to delete user: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Error deleting user');
+    }
+  };
+
   const handleCreateEvent = async (eventData: any) => {
     try {
       setEventsLoading(true);
@@ -893,11 +997,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
   };
 
   const handleEditEvent = (event: EventWithActivities) => {
+    console.log('🔧 handleEditEvent called with event:', event);
     setEditingEvent(event);
     
     // Parse datetime strings into separate date and time
+    console.log('🔍 Event start_date:', event.start_date);
+    console.log('🔍 Event end_date:', event.end_date);
+    
     const startDateTime = new Date(event.start_date || '');
     const endDateTime = new Date(event.end_date || '');
+    
+    console.log('🔍 Parsed startDateTime:', startDateTime);
+    console.log('🔍 Parsed endDateTime:', endDateTime);
     
     setEventFormData({
       name: event.name || '',
@@ -930,12 +1041,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
       const endDateTime = new Date(activity.end_time);
       
       return {
+        id: `activity-${activity.id || Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
         name: activity.title,
         description: activity.description || '',
         startDate: startDateTime.toISOString().split('T')[0],
         startTime: convertTo12Hour(startDateTime.toTimeString().slice(0, 5)),
         endDate: endDateTime.toISOString().split('T')[0],
         endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
+        locationName: activity.location?.name || '', // Add location name field
         location: activity.location?.name || '',
         category: 'other', // Default category
         capacity: activity.max_capacity?.toString() || '',
@@ -1006,7 +1119,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
             description: activity.description,
             start_time: `${activity.startDate}T${convertTo24Hour(activity.startTime)}:00`,
             end_time: `${activity.endDate}T${convertTo24Hour(activity.endTime)}:00`,
-            location: activity.location,
+            location: {
+              name: activity.locationName || (typeof activity.location === 'object' ? activity.location?.name : activity.location) || '',
+              address: typeof activity.location === 'object' ? activity.location?.address : activity.location || '',
+              coordinates: typeof activity.location === 'object' ? activity.location?.coordinates : undefined,
+              placeId: typeof activity.location === 'object' ? activity.location?.placeId : undefined,
+            },
             category: activity.category,
             capacity: activity.capacity,
             is_required: activity.isRequired,
@@ -1100,12 +1218,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
   const addActivity = () => {
     setActivities([...activities, {
+      id: `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
       name: '',
       description: '',
       startDate: '',
       startTime: '',
       endDate: '',
       endTime: '',
+      locationName: '', // Add location name field
       location: '',
       category: 'other',
       capacity: undefined,
@@ -2278,24 +2398,27 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                 Role
                               </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '500', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Actions
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {usersLoading ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={4}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
                                   Loading users...
                                 </td>
                               </tr>
                             ) : usersError ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#DC2626' }} colSpan={4}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#DC2626' }} colSpan={5}>
                                   Error: {usersError}
                                 </td>
                               </tr>
                             ) : users.length === 0 ? (
                               <tr style={{ borderTop: '1px solid #E5E7EB' }}>
-                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={4}>
+                                <td style={{ padding: '16px', textAlign: 'center', color: '#6B7280' }} colSpan={5}>
                                   No users found. Use the "Create User" button or Bulk Import tab to add users.
                                 </td>
                               </tr>
@@ -2304,9 +2427,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                 <tr key={user.id} style={{ borderTop: '1px solid #E5E7EB' }}>
                                   <td style={{ padding: '16px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '500', color: '#6B7280' }}>
-                                        {user.first_name?.[0]}{user.last_name?.[0]}
-                                      </div>
+                                      <AvatarComponent
+                                        name={user.name}
+                                        firstName={user.first_name}
+                                        lastName={user.last_name}
+                                        avatarUrl={user.avatar_url}
+                                        size={40}
+                                        fallbackText="??"
+                                      />
                                       <div>
                                         <div style={{ fontSize: '14px', fontWeight: '500', color: '#111827' }}>
                                           {user.first_name} {user.last_name}
@@ -2381,6 +2509,27 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                       <option value="business">Business</option>
                                       <option value="admin">Admin</option>
                                     </select>
+                                  </td>
+                                  <td style={{ padding: '16px' }}>
+                                    <button
+                                      onClick={() => handleDeleteUser(user.id, user.email)}
+                                      style={{
+                                        backgroundColor: '#DC2626',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        fontSize: '12px',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                      title="Delete user"
+                                    >
+                                      🗑️ Delete
+                                    </button>
                                   </td>
                                 </tr>
                               ))
@@ -2845,7 +2994,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                                 {event.description}
                               </p>
                               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#6B7280', flexWrap: 'wrap' }}>
-                                <span>📅 {formatFriendlyDate(event.start_date || '')}</span>
+                                <span>🕐 Start: {formatFriendlyDateTime(event.start_date || '')}</span>
+                                <span>🕐 End: {formatFriendlyDateTime(event.end_date || '')}</span>
                                 <span>📍 {typeof event.location === 'string' ? event.location : (event.location as any)?.name || 'Location TBD'}</span>
                                 {event.max_capacity && <span>👥 {event.max_capacity} capacity</span>}
                                 {event.price && <span>💰 ${event.price / 100}</span>}
@@ -3461,7 +3611,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                     {activities.map((activity, index) => {
                       const isValid = activity.name.trim() !== '' && activity.startDate && activity.startTime && activity.endDate && activity.endTime;
                       return (
-                      <div key={index} style={{ 
+                      <div key={activity.id} style={{ 
                         border: `1px solid ${isValid ? '#E5E7EB' : '#FCA5A5'}`, 
                         borderRadius: '8px', 
                         padding: '16px', 
@@ -3615,13 +3765,41 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
                               </button>
                             </div>
                           </div>
-                          <LocationPicker
-                            value={typeof activity.location === 'string' 
-                              ? { name: activity.location, address: activity.location } 
-                              : activity.location as any}
-                            onChange={(location: any) => updateActivity(index, 'location', location)}
-                            placeholder="Search for activity location..."
-                          />
+                          
+                          {/* Location Name */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                              Location Name
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Enter custom location name (e.g., 'Main Conference Room')"
+                              value={activity.locationName}
+                              onChange={(e) => updateActivity(index, 'locationName', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #D1D5DB',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                marginBottom: '12px'
+                              }}
+                            />
+                          </div>
+                          
+                          {/* Location Address */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                              Location Address
+                            </label>
+                            <LocationPicker
+                              value={typeof activity.location === 'string' 
+                                ? { name: activity.location, address: activity.location } 
+                                : activity.location as any}
+                              onChange={(location: any) => updateActivity(index, 'location', location)}
+                              placeholder="Search for activity location..."
+                            />
+                          </div>
                           <select
                             value={activity.category}
                             onChange={(e) => updateActivity(index, 'category', e.target.value)}
@@ -3784,7 +3962,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
 
       {/* Activity Calendar and Time Pickers */}
       {activities.map((activity, index) => (
-        <div key={`activity-pickers-${index}`}>
+        <div key={`activity-pickers-${activity.id}`}>
           {getActivityPickerState(index, 'showStartDate') && (
             <ModernCalendar
               selectedDate={activity.startDate}
