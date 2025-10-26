@@ -4,6 +4,14 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Ensure uuid_generate_v4 function is available
+CREATE OR REPLACE FUNCTION uuid_generate_v4()
+RETURNS uuid AS $$
+BEGIN
+    RETURN gen_random_uuid();
+END;
+$$ LANGUAGE plpgsql;
+
 -- Create custom types
 CREATE TYPE user_role AS ENUM ('admin', 'business', 'general');
 CREATE TYPE event_status AS ENUM ('draft', 'published', 'cancelled', 'completed');

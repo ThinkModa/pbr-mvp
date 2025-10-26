@@ -31,6 +31,7 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
   
   // State for tracks
   const [tracks, setTracks] = useState<EventTrack[]>([]);
+  const [trackGroups, setTrackGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
@@ -48,8 +49,14 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
     try {
       setLoading(true);
       console.log('Loading tracks for event:', event.id);
-      const eventTracks = await TrackService.getEventTracksWithCapacity(event.id);
+      
+      // Load tracks with groups
+      const eventTracks = await TrackService.getEventTracksWithGroups(event.id);
       setTracks(eventTracks);
+      
+      // Load track groups
+      const groups = await TrackService.getTrackGroups(event.id);
+      setTrackGroups(groups);
       
       // Load activities for each track
       const activitiesMap: {[trackId: string]: any[]} = {};
@@ -65,6 +72,7 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
       setTrackActivities(activitiesMap);
       
       console.log('✅ Loaded tracks:', eventTracks.length);
+      console.log('✅ Loaded track groups:', groups.length);
       console.log('✅ Loaded track activities:', activitiesMap);
     } catch (error) {
       console.error('Error loading tracks:', error);
@@ -84,10 +92,18 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
     console.log('Track selected:', track.name);
     setSelectedTrack(track.id);
     
+    // Check if this track is in a mutually exclusive group
+    const trackGroup = trackGroups.find(group => group.id === track.track_group_id);
+    let confirmationMessage = `Are you sure you want to select "${track.name}"?`;
+    
+    if (trackGroup && trackGroup.is_mutually_exclusive) {
+      confirmationMessage = `You're selecting "${track.name}" from the "${trackGroup.name}" group. This is a mutually exclusive group, meaning you can only select one track from this group. Are you sure?`;
+    }
+    
     // Show confirmation alert
     Alert.alert(
       'Confirm Track Selection',
-      `Are you sure you want to select "${track.name}"?`,
+      confirmationMessage,
       [
         {
           text: 'Cancel',
@@ -107,9 +123,9 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
 
   const formatCapacity = (track: EventTrack) => {
     if (track.max_capacity === null) {
-      return `${track.current_rsvps} RSVPs`;
+      return `${track.current_rsvps || 0} RSVPs`;
     }
-    return `${track.current_rsvps}/${track.max_capacity}`;
+    return `${track.current_rsvps || 0}/${track.max_capacity}`;
   };
 
   const getCapacityColor = (track: EventTrack) => {
@@ -117,7 +133,7 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
       return '#10B981'; // Green for unlimited
     }
     
-    const percentage = track.current_rsvps / track.max_capacity;
+    const percentage = (track.current_rsvps || 0) / (track.max_capacity || 1);
     if (percentage >= 1) {
       return '#EF4444'; // Red for full
     } else if (percentage >= 0.8) {
@@ -167,62 +183,153 @@ const TrackSelectionContent: React.FC<TrackSelectionContentProps> = ({
         </View>
       ) : (
         <View style={styles.tracksContainer}>
-          {tracks.map((track) => (
-            <TouchableOpacity
-              key={track.id}
-              style={[
-                styles.trackCard,
-                selectedTrack === track.id && styles.trackCardSelected
-              ]}
-              onPress={() => handleTrackSelect(track)}
-              disabled={selectedTrack !== null}
-            >
-              <View style={styles.trackHeader}>
-                <Text style={styles.trackName}>{track.name}</Text>
-                <View style={[
-                  styles.capacityBadge,
-                  { backgroundColor: getCapacityColor(track) }
-                ]}>
-                  <Text style={styles.capacityText}>
-                    {formatCapacity(track)}
-                  </Text>
+          {/* Render Track Groups */}
+          {trackGroups.map((group) => {
+            const groupTracks = tracks.filter(track => track.track_group_id === group.id);
+            if (groupTracks.length === 0) return null;
+            
+            return (
+              <View key={group.id} style={styles.trackGroupContainer}>
+                <View style={styles.trackGroupHeader}>
+                  <Text style={styles.trackGroupName}>{group.name}</Text>
+                  {group.is_mutually_exclusive && (
+                    <View style={styles.mutuallyExclusiveBadge}>
+                      <Text style={styles.mutuallyExclusiveText}>Choose 1</Text>
+                    </View>
+                  )}
                 </View>
-              </View>
-              
-              {track.description && (
-                <Text style={styles.trackDescription}>
-                  {track.description}
-                </Text>
-              )}
-              
-              {/* Activities for this track */}
-              {trackActivities[track.id] && trackActivities[track.id].length > 0 && (
-                <View style={styles.activitiesSection}>
-                  <Text style={styles.activitiesTitle}>Activities ({trackActivities[track.id].length})</Text>
-                  {trackActivities[track.id].map((activity, index) => (
-                    <View key={activity.id || index} style={styles.activityItem}>
-                      <Text style={styles.activityName}>{activity.title}</Text>
-                      {activity.description && (
-                        <Text style={styles.activityDescription} numberOfLines={2}>
-                          {activity.description}
+                {group.description && (
+                  <Text style={styles.trackGroupDescription}>{group.description}</Text>
+                )}
+                
+                {groupTracks.map((track) => (
+                  <TouchableOpacity
+                    key={track.id}
+                    style={[
+                      styles.trackCard,
+                      selectedTrack === track.id && styles.trackCardSelected
+                    ]}
+                    onPress={() => handleTrackSelect(track)}
+                    disabled={selectedTrack !== null}
+                  >
+                    <View style={styles.trackHeader}>
+                      <Text style={styles.trackName}>{track.name}</Text>
+                      <View style={[
+                        styles.capacityBadge,
+                        { backgroundColor: getCapacityColor(track) }
+                      ]}>
+                        <Text style={styles.capacityText}>
+                          {formatCapacity(track)}
                         </Text>
-                      )}
-                      <Text style={styles.activityTime}>
-                        {new Date(activity.start_time).toLocaleDateString()} •{' '}
-                        {new Date(activity.start_time).toLocaleTimeString([], { 
-                          hour: 'numeric', 
-                          minute: '2-digit' 
-                        })} - {new Date(activity.end_time).toLocaleTimeString([], { 
-                          hour: 'numeric', 
-                          minute: '2-digit' 
-                        })}
+                      </View>
+                    </View>
+                    
+                    {track.description && (
+                      <Text style={styles.trackDescription}>
+                        {track.description}
+                      </Text>
+                    )}
+                    
+                    {/* Activities for this track */}
+                    {trackActivities[track.id] && trackActivities[track.id].length > 0 && (
+                      <View style={styles.activitiesSection}>
+                        <Text style={styles.activitiesTitle}>Activities ({trackActivities[track.id].length})</Text>
+                        {trackActivities[track.id].map((activity, index) => (
+                          <View key={activity.id || index} style={styles.activityItem}>
+                            <Text style={styles.activityName}>{activity.title}</Text>
+                            {activity.description && (
+                              <Text style={styles.activityDescription} numberOfLines={2}>
+                                {activity.description}
+                              </Text>
+                            )}
+                            <Text style={styles.activityTime}>
+                              {new Date(activity.start_time).toLocaleDateString()} •{' '}
+                              {new Date(activity.start_time).toLocaleTimeString([], { 
+                                hour: 'numeric', 
+                                minute: '2-digit' 
+                              })} - {new Date(activity.end_time).toLocaleTimeString([], { 
+                                hour: 'numeric', 
+                                minute: '2-digit' 
+                              })}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          })}
+          
+          {/* Render Independent Tracks (not in any group) */}
+          {tracks.filter(track => !track.track_group_id).length > 0 && (
+            <View style={styles.trackGroupContainer}>
+              <View style={styles.trackGroupHeader}>
+                <Text style={styles.trackGroupName}>Independent Tracks</Text>
+              </View>
+              <Text style={styles.trackGroupDescription}>
+                These tracks can be selected independently
+              </Text>
+              
+              {tracks.filter(track => !track.track_group_id).map((track) => (
+                <TouchableOpacity
+                  key={track.id}
+                  style={[
+                    styles.trackCard,
+                    selectedTrack === track.id && styles.trackCardSelected
+                  ]}
+                  onPress={() => handleTrackSelect(track)}
+                  disabled={selectedTrack !== null}
+                >
+                  <View style={styles.trackHeader}>
+                    <Text style={styles.trackName}>{track.name}</Text>
+                    <View style={[
+                      styles.capacityBadge,
+                      { backgroundColor: getCapacityColor(track) }
+                    ]}>
+                      <Text style={styles.capacityText}>
+                        {formatCapacity(track)}
                       </Text>
                     </View>
-                  ))}
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
+                  </View>
+                  
+                  {track.description && (
+                    <Text style={styles.trackDescription}>
+                      {track.description}
+                    </Text>
+                  )}
+                  
+                  {/* Activities for this track */}
+                  {trackActivities[track.id] && trackActivities[track.id].length > 0 && (
+                    <View style={styles.activitiesSection}>
+                      <Text style={styles.activitiesTitle}>Activities ({trackActivities[track.id].length})</Text>
+                      {trackActivities[track.id].map((activity, index) => (
+                        <View key={activity.id || index} style={styles.activityItem}>
+                          <Text style={styles.activityName}>{activity.title}</Text>
+                          {activity.description && (
+                            <Text style={styles.activityDescription} numberOfLines={2}>
+                              {activity.description}
+                            </Text>
+                          )}
+                          <Text style={styles.activityTime}>
+                            {new Date(activity.start_time).toLocaleDateString()} •{' '}
+                            {new Date(activity.start_time).toLocaleTimeString([], { 
+                              hour: 'numeric', 
+                              minute: '2-digit' 
+                            })} - {new Date(activity.end_time).toLocaleTimeString([], { 
+                              hour: 'numeric', 
+                              minute: '2-digit' 
+                            })}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
     </ScrollView>
@@ -371,6 +478,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9CA3AF',
     fontWeight: '500',
+  },
+  // Track Group Styles
+  trackGroupContainer: {
+    marginBottom: 24,
+  },
+  trackGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trackGroupName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  trackGroupDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  mutuallyExclusiveBadge: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mutuallyExclusiveText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
   },
 });
 

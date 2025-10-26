@@ -257,3 +257,4 @@ const EmailConfirmationPage: React.FC = () => {
 };
 
 export default EmailConfirmationPage;
+

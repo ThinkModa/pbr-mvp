@@ -18,6 +18,28 @@ import {
   Linking,
   ActionSheetIOS,
 } from 'react-native';
+// Safe FlashList import with fallback (commented out for development builds)
+let FlashList: any = FlatList; // Default to FlatList
+let FlashListAvailable = false;
+try {
+  // const FlashListModule = require('@shopify/flash-list'); // Commented out for development builds
+  // if (FlashListModule && FlashListModule.FlashList) {
+  //   FlashList = FlashListModule.FlashList;
+  //   FlashListAvailable = true;
+  //   console.log('✅ FlashList loaded successfully');
+  // }
+  
+  // Use FlatList for development builds
+  FlashList = FlatList;
+  FlashListAvailable = false;
+  console.log('✅ Using FlatList for development build');
+} catch (error) {
+  console.warn('⚠️ FlashList not available, using FlatList:', error);
+  FlashList = FlatList;
+  FlashListAvailable = false;
+}
+// import { PerformanceMeasureView } from '@shopify/react-native-performance';
+import { MaterialIcons } from '@expo/vector-icons';
 // Removed SwipeRow import to fix props error
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
@@ -26,14 +48,16 @@ import { useAuth } from '../contexts/SupabaseAuthContext';
 import { EventsService, EventWithActivities } from '../services/eventsService';
 import { supabase } from '../lib/supabase';
 import { RSVPService, RSVPStatus } from '../services/rsvpService';
+import AttendeesService from '../services/attendeesService';
 import { SpeakersService, EventSpeaker, ActivitySpeaker } from '../services/speakersService';
 import { BusinessesService, EventBusiness } from '../services/businessesService';
 import { OrganizationsService, EventOrganization, ActivityOrganization } from '../services/organizationsService';
 import { ChatService, ChatThread, ChatMessage } from '../services/chatService';
 import { RealTimeService } from '../services/realTimeService';
-// import { NotificationService } from '../services/notificationService'; // Temporarily disabled - requires native compilation
+import { NotificationService } from '../services/notificationService';
 import { ProfileService } from '../services/profileService';
 import { TrackService } from '../services/trackService';
+import CacheService from '../services/cacheService';
 import EventModal from './EventModal';
 import ActivityModal from './ActivityModal';
 import SpeakerModal from './SpeakerModal';
@@ -63,8 +87,55 @@ const EventsScreen: React.FC<{
   const [modalVisible, setModalVisible] = useState(false);
   const [modalView, setModalView] = useState<'event' | 'activity' | 'track' | 'attendees'>('event');
   const [selectedEvent, setSelectedEvent] = useState<EventWithActivities | null>(null);
+
+  // Function to fetch attendee counts for all events
+  const fetchAllEventAttendeeCounts = async (events: EventWithActivities[]) => {
+    try {
+      console.log('📊 Fetching attendee counts for all events...');
+      const counts: Record<string, number> = {};
+      
+      // Fetch counts for all events in parallel
+      const countPromises = events.map(async (event) => {
+        try {
+          const count = await AttendeesService.getEventAttendeeCount(event.id);
+          counts[event.id] = count;
+          console.log(`📊 Event ${event.id} (${event.title}): ${count} attendees`);
+        } catch (error) {
+          console.error(`Error fetching attendee count for event ${event.id}:`, error);
+          counts[event.id] = 0;
+        }
+      });
+      
+      await Promise.all(countPromises);
+      setEventAttendeeCounts(counts);
+      console.log('✅ Updated all event attendee counts:', counts);
+    } catch (error) {
+      console.error('Error fetching attendee counts:', error);
+    }
+  };
+
+  // Function to refresh attendee count for selected event
+  const refreshSelectedEventAttendeeCount = async () => {
+    if (!selectedEvent) return;
+    
+    try {
+      const attendeeCount = await AttendeesService.getEventAttendeeCount(selectedEvent.id);
+      setSelectedEvent(prev => prev ? { ...prev, current_rsvps: attendeeCount } : null);
+      
+      // Also update the global attendee counts state
+      setEventAttendeeCounts(prev => ({
+        ...prev,
+        [selectedEvent.id]: attendeeCount
+      }));
+      
+      console.log('✅ Updated selected event attendee count:', attendeeCount);
+    } catch (error) {
+      console.error('Error refreshing attendee count:', error);
+    }
+  };
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [userRSVPs, setUserRSVPs] = useState<Record<string, RSVPStatus>>({});
+  const [eventAttendeeCounts, setEventAttendeeCounts] = useState<Record<string, number>>({});
   const [showMyevents, setShowMyevents] = useState(false);
   
   // Speaker state management
@@ -131,19 +202,68 @@ const EventsScreen: React.FC<{
     loadEvents();
   }, []);
 
+  // Re-filter activities when modal view changes to 'event' or when selected track changes
+  useEffect(() => {
+    if (modalView === 'event' && selectedEvent && userSelectedTracks[selectedEvent.id]) {
+      console.log('🔄 Modal view changed to event, re-filtering activities...');
+      const filterActivities = async () => {
+        // Get track activities for the selected track
+        const selectedTrackId = userSelectedTracks[selectedEvent.id];
+        try {
+          const trackActivities = await TrackService.getTrackActivities(selectedTrackId);
+          console.log('📊 Track activities for selected track:', trackActivities.length);
+          
+          // Get all event activities
+          const allActivities = selectedEvent.activities || [];
+          console.log('📊 All event activities:', allActivities.length);
+          
+          // Filter to show only track activities + general activities (no track_id)
+          const filtered = allActivities.filter(activity => {
+            // Show general activities (no track_id assigned)
+            if (!activity.track_id) {
+              console.log('📊 Including general activity:', activity.title);
+              return true;
+            }
+            // Show activities that are in the selected track's activities
+            const isInSelectedTrack = trackActivities.some(trackActivity => trackActivity.id === activity.id);
+            if (isInSelectedTrack) {
+              console.log('📊 Including track activity:', activity.title);
+              return true;
+            }
+            // Hide activities for other tracks
+            console.log('📊 Hiding activity for other track:', activity.title);
+            return false;
+          });
+          
+          console.log(`📊 Hybrid filtering result:`, filtered.length, 'out of', allActivities.length);
+          setFilteredActivities(filtered);
+        } catch (error) {
+          console.error('Error filtering activities by track:', error);
+          // Fallback to showing all activities
+          setFilteredActivities(selectedEvent.activities || []);
+        }
+      };
+      filterActivities();
+    }
+  }, [modalView, selectedEvent, userSelectedTracks]);
+
         const loadEvents = async () => {
           try {
             setLoading(true);
             setError(null);
+            // Use full getEvents to ensure activities are loaded
             const eventsData = await EventsService.getEvents();
             setEvents(eventsData);
+            
+            // Fetch attendee counts for all events (single source of truth)
+            await fetchAllEventAttendeeCounts(eventsData);
             
             // Load user RSVPs if user is logged in
             if (user) {
               await loadUserRSVPs();
             }
             
-            console.log('✅ Loaded', eventsData.length, 'events from live database');
+            console.log('✅ Loaded', eventsData.length, 'events from live database (optimized)');
           } catch (err) {
             setError('Failed to load events from live database. Please check your connection.');
             console.error('Error loading events from live database:', err);
@@ -172,6 +292,7 @@ const EventsScreen: React.FC<{
     try {
       setRefreshing(true);
       setError(null);
+      // Use full getEvents for refresh to get complete data with activities
       const eventsData = await EventsService.getEvents();
       setEvents(eventsData);
       
@@ -189,21 +310,37 @@ const EventsScreen: React.FC<{
     }
   };
 
-  const handleEventPress = (event: EventWithActivities) => {
+  const handleEventPress = async (event: EventWithActivities) => {
     console.log('🎯 Event pressed:', event.title);
     console.log('🎯 Setting selected event and modal visible');
     setSelectedEvent(event);
     setModalView('event');
     setModalVisible(true);
-    // Always show all activities (don't filter by track)
-    setFilteredActivities(event.activities || []);
-    setSelectedTrackName('');
+    
+    // Load user's selected track for this event first
+    await loadUserSelectedTrack(event.id);
+    
+    // Then filter activities based on the selected track
+    console.log('🎯 Event activities:', event.activities?.length || 0);
+    console.log('🎯 First activity sample:', event.activities?.[0]);
+    
+    // Debug: Show all track_id values in activities
+    if (event.activities) {
+      const trackIds = event.activities.map(activity => activity.track_id).filter(Boolean);
+      const uniqueTrackIds = [...new Set(trackIds)];
+      console.log('🎯 All track_id values in activities:', uniqueTrackIds);
+      console.log('🎯 Activities with track_id:', trackIds.length);
+      console.log('🎯 Activities without track_id:', event.activities.length - trackIds.length);
+    }
+    
+    const filtered = await getFilteredActivities(event.activities || [], event.id);
+    console.log('🎯 Filtered activities result:', filtered.length);
+    setFilteredActivities(filtered);
+    
     // Load speakers, businesses, and organizations for this event
     loadEventSpeakers(event.id);
     loadEventBusinesses(event.id);
     loadEventOrganizations(event.id);
-    // Load user's selected track for this event (for display purposes only)
-    loadUserSelectedTrack(event.id);
     console.log('🎯 Event view should be visible now');
   };
 
@@ -225,6 +362,14 @@ const EventsScreen: React.FC<{
             delete newRSVPs[eventId];
             return newRSVPs;
           });
+          
+          // Refresh attendee count for selected event if it's the same event
+          if (selectedEvent && selectedEvent.id === eventId) {
+            await refreshSelectedEventAttendeeCount();
+          }
+          
+          // Invalidate events cache to ensure fresh attendee counts
+          await CacheService.invalidateEvents();
         } else {
           // Always check profile completeness fresh before creating RSVP
           console.log('Checking profile completeness before RSVP...');
@@ -263,6 +408,14 @@ const EventsScreen: React.FC<{
             ...prev,
             [eventId]: status
           }));
+          
+          // Refresh attendee count for selected event if it's the same event
+          if (selectedEvent && selectedEvent.id === eventId) {
+            await refreshSelectedEventAttendeeCount();
+          }
+          
+          // Invalidate events cache to ensure fresh attendee counts
+          await CacheService.invalidateEvents();
         }
         console.log('✅ RSVP updated successfully');
       } catch (error) {
@@ -332,6 +485,12 @@ const EventsScreen: React.FC<{
       // Switch back to event view
       setModalView('event');
       
+      // Refresh attendee count for selected event
+      await refreshSelectedEventAttendeeCount();
+      
+      // Invalidate events cache to ensure fresh attendee counts
+      await CacheService.invalidateEvents();
+      
       // Show success message
       Alert.alert('Success', 'You have successfully selected your track and confirmed your RSVP!');
     } catch (error) {
@@ -352,9 +511,8 @@ const EventsScreen: React.FC<{
           [eventId]: rsvp.track_id!
         }));
         
-        // Load track name for display
-        const trackName = await getTrackName(rsvp.track_id);
-        setSelectedTrackName(trackName);
+        // Set track name (simplified - don't fetch from database)
+        setSelectedTrackName(`Track ${rsvp.track_id.slice(-4)}`);
       } else {
         // No track selected
         setSelectedTrackName('');
@@ -373,22 +531,50 @@ const EventsScreen: React.FC<{
       return track?.name || 'Unknown Track';
     } catch (error) {
       console.error('Error getting track name:', error);
-      return 'Unknown Track';
+      // Return a generic track name if we can't fetch from database
+      return `Track ${trackId.slice(-4)}`; // Use last 4 chars of track ID
     }
   };
 
-  // Filter activities by user's selected track
+  // Filter activities by user's selected track (hybrid: track-specific + general activities)
   const getFilteredActivities = async (activities: any[], eventId: string) => {
     const selectedTrackId = userSelectedTracks[eventId];
     if (!selectedTrackId) {
       // If no track selected, show all activities
+      console.log('📊 No track selected, showing all activities:', activities.length);
       return activities;
     }
     
     try {
-      // Get activities for the selected track
-      const trackActivities = await TrackService.getTrackActivities(selectedTrackId);
-      return trackActivities;
+      console.log('📊 Starting hybrid filtering for track:', selectedTrackId);
+      console.log('📊 Total activities to filter:', activities.length);
+      
+      // Debug: Show all track_id values in activities
+      const trackIds = activities.map(activity => activity.track_id).filter(Boolean);
+      const uniqueTrackIds = [...new Set(trackIds)];
+      console.log('📊 All track_id values in activities:', uniqueTrackIds);
+      console.log('📊 Activities with track_id:', trackIds.length);
+      console.log('📊 Activities without track_id:', activities.length - trackIds.length);
+      
+      // Hybrid filtering: show track-specific activities + general activities (no track_id)
+      const filteredActivities = activities.filter(activity => {
+        // Show general activities (no track_id assigned)
+        if (!activity.track_id) {
+          console.log('📊 Including general activity:', activity.title);
+          return true;
+        }
+        // Show activities for the selected track
+        if (activity.track_id === selectedTrackId) {
+          console.log('📊 Including track-specific activity:', activity.title, 'for track:', selectedTrackId);
+          return true;
+        }
+        // Hide activities for other tracks
+        console.log('📊 Hiding activity for other track:', activity.title, 'track_id:', activity.track_id);
+        return false;
+      });
+      
+      console.log(`📊 Hybrid filtering result for track ${selectedTrackId}:`, filteredActivities.length, 'out of', activities.length);
+      return filteredActivities;
     } catch (error) {
       console.error('Error filtering activities by track:', error);
       // Fallback to showing all activities
@@ -644,7 +830,7 @@ const EventsScreen: React.FC<{
     const userRSVP = userRSVPs[item.id];
     
     const price = item.is_free ? 'Free' : `$${((item.price || 0) / 100).toFixed(2)}`;
-    const attendees = item.current_rsvps || 0;
+    const attendees = eventAttendeeCounts[item.id] || 0; // Use single source of truth
     const capacity = ` / ${item.max_capacity}`;
 
     return (
@@ -746,10 +932,11 @@ const EventsScreen: React.FC<{
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Events</Text>
+    // <PerformanceMeasureView screenName="EventsScreen" interactive>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Events</Text>
                 <View style={[styles.dataSourceIndicator, { backgroundColor: '#10B981' }]}>
                   <Text style={styles.dataSourceText}>
                     LIVE
@@ -777,14 +964,14 @@ const EventsScreen: React.FC<{
           <Text style={styles.emptySubtext}>Check back later for upcoming events</Text>
         </View>
             ) : (
-              <FlatList
+              <FlashList
                 data={getFilteredEvents()}
                 renderItem={renderEvent}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item: any) => item.id}
+                {...(FlashListAvailable ? { estimatedItemSize: 265 } : {})}
                 contentContainerStyle={styles.eventsList}
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={true}
-                removeClippedSubviews={false}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
@@ -930,7 +1117,7 @@ const EventsScreen: React.FC<{
                     {selectedEvent?.show_attendee_count !== false && (
                       <>
                         <Text style={{ fontSize: 16, color: '#111827', fontWeight: '600' }}>
-                          {selectedEvent?.current_rsvps || 0} registered
+                          {eventAttendeeCounts[selectedEvent?.id] || 0} registered
                         </Text>
                         <View style={{ width: 1, height: 16, backgroundColor: '#D1D5DB', marginHorizontal: 12 }} />
                       </>
@@ -1011,11 +1198,11 @@ const EventsScreen: React.FC<{
                   </View>
 
                   {/* Activities */}
-                  {selectedEvent.activities && selectedEvent.activities.length > 0 && (
+                  {filteredActivities && filteredActivities.length > 0 && (
                     <View style={{ marginBottom: 20 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#265451' }}>
-                          Activities ({selectedEvent.activities.length})
+                          Activities ({filteredActivities.length})
                         </Text>
                         {selectedTrackName && (
                           <View style={{ 
@@ -1033,22 +1220,27 @@ const EventsScreen: React.FC<{
                       </View>
                       {(() => {
                         // Group activities by date
-                        const activitiesByDate = selectedEvent.activities.reduce((groups, activity) => {
+                        const activitiesByDate = filteredActivities.reduce((groups, activity) => {
                           const date = new Date(activity.start_time + 'Z').toDateString();
                           if (!groups[date]) {
                             groups[date] = [];
                           }
                           groups[date].push(activity);
                           return groups;
-                        }, {} as Record<string, typeof selectedEvent.activities>);
+                        }, {} as Record<string, typeof filteredActivities>);
 
                         // Sort dates
-                        const sortedDates = Object.keys(activitiesByDate).sort((a, b) => 
+                        const sortedDates = Object.keys(activitiesByDate).sort((a: string, b: string) => 
                           new Date(a).getTime() - new Date(b).getTime()
                         );
 
                         return sortedDates.map((dateString) => {
-                          const activities = activitiesByDate[dateString];
+                          const activities = activitiesByDate[dateString].sort((a: any, b: any) => {
+                            // Sort activities within each date by start time
+                            const timeA = new Date(a.start_time + 'Z').getTime();
+                            const timeB = new Date(b.start_time + 'Z').getTime();
+                            return timeA - timeB;
+                          });
                           const date = new Date(dateString);
                           
                           return (
@@ -1102,7 +1294,7 @@ const EventsScreen: React.FC<{
                               }} />
                               
                               {/* Activities for this date */}
-                              {activities.map((activity, activityIndex) => (
+                              {activities.map((activity: any, activityIndex: number) => (
                                 <TouchableOpacity
                                   key={activity.id}
                                   style={{ 
@@ -2147,13 +2339,14 @@ const EventsScreen: React.FC<{
           <Text style={styles.floatingActionButtonText}>+</Text>
         </TouchableOpacity>
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    // </PerformanceMeasureView>
   );
 };
 
 // Profile Screen
 const ProfileScreen: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateNotificationPreferences } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -2175,9 +2368,22 @@ const ProfileScreen: React.FC = () => {
     
     setLoading(true);
     try {
+      // Try to load from cache first
+      const cachedProfile = await CacheService.getUserProfile();
+      if (cachedProfile) {
+        console.log('📦 Loading user profile from cache');
+        setProfile(cachedProfile);
+        setLoading(false);
+        // Continue to fetch fresh data in background
+      }
+      
       // Load profile from ProfileService
       const userProfile = await ProfileService.getUserProfile(user.id);
       setProfile(userProfile);
+      
+      // Cache the profile data
+      await CacheService.setUserProfile(userProfile);
+      
       console.log('✅ Loaded user profile:', userProfile);
       // console.log('🔍 Profile name data:', {
       //   name: userProfile.name,
@@ -2201,7 +2407,7 @@ const ProfileScreen: React.FC = () => {
         organizationAffiliation: 'TechCorp Inc.',
         titlePosition: 'Software Engineer',
         points: 1250,
-        avatarUrl: 'https://via.placeholder.com/120x120',
+        avatar_url: 'https://via.placeholder.com/120x120',
         professionalCategories: [
           { id: '1', name: 'Technology' },
           { id: '2', name: 'Engineering' }
@@ -2228,8 +2434,19 @@ const ProfileScreen: React.FC = () => {
 
   const loadAvailableCategories = async () => {
     try {
+      // Try to load from cache first
+      const cachedCategories = await CacheService.getProfileCategories();
+      if (cachedCategories) {
+        console.log('📦 Loading categories from cache');
+        setAvailableCategories(cachedCategories);
+        // Continue to fetch fresh data in background
+      }
+      
       const categories = await ProfileService.getProfessionalCategories();
       setAvailableCategories(categories);
+      
+      // Cache the categories data
+      await CacheService.setProfileCategories(categories);
     } catch (error) {
       console.error('Error loading categories:', error);
       // Fallback to mock data
@@ -2261,8 +2478,19 @@ const ProfileScreen: React.FC = () => {
 
   const loadAvailableInterests = async () => {
     try {
+      // Try to load from cache first
+      const cachedInterests = await CacheService.getProfileInterests();
+      if (cachedInterests) {
+        console.log('📦 Loading interests from cache');
+        setAvailableInterests(cachedInterests);
+        // Continue to fetch fresh data in background
+      }
+      
       const interests = await ProfileService.getCommunityInterests();
       setAvailableInterests(interests);
+      
+      // Cache the interests data
+      await CacheService.setProfileInterests(interests);
     } catch (error) {
       console.error('Error loading interests:', error);
       // Fallback to mock data
@@ -2294,6 +2522,25 @@ const ProfileScreen: React.FC = () => {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleNotificationToggle = async (enabled: boolean) => {
+    try {
+      const preferences = {
+        push_enabled: enabled,
+        events_enabled: enabled,
+        chat_enabled: enabled,
+      };
+      
+      await updateNotificationPreferences(preferences);
+      
+      if (enabled) {
+        // Initialize notifications when enabled
+        await NotificationService.initialize();
+      }
+    } catch (error) {
+      console.error('Error updating notification preferences:', error);
+    }
   };
 
   const handleEditProfile = () => {
@@ -2385,37 +2632,8 @@ const ProfileScreen: React.FC = () => {
         return;
       }
 
-      // Create a unique filename
-      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      // Create FormData for React Native
-      const formData = new FormData();
-      formData.append('file', {
-        uri: imageUri,
-        type: `image/${fileExt}`,
-        name: fileName,
-      } as any);
-
-      // Upload to Supabase storage
-      const { data, error } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, formData, {
-          contentType: `image/${fileExt}`,
-          upsert: true
-        });
-
-      if (error) {
-        console.error('Error uploading image:', error);
-        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
-        return;
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
+      // Use ProfileService for consistent upload method
+      const publicUrl = await ProfileService.uploadProfileImage(user.id, imageUri);
 
       // Update user profile with new avatar URL
       const { error: updateError } = await supabase
@@ -2430,9 +2648,10 @@ const ProfileScreen: React.FC = () => {
       }
 
       // Update local profile state
-      setProfile((prev: any) => prev ? { ...prev, avatarUrl: publicUrl } : null);
+      setProfile((prev: any) => prev ? { ...prev, avatar_url: publicUrl } : null);
       
-      // Reload profile to ensure consistency
+      // Invalidate cache and reload profile to ensure consistency
+      await CacheService.invalidateUserProfile();
       await loadUserProfile();
       
       Alert.alert('Success', 'Profile picture updated successfully!');
@@ -2470,13 +2689,26 @@ const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-          <Text style={styles.editButtonText}>Edit</Text>
-        </TouchableOpacity>
-      </View>
+    // <PerformanceMeasureView screenName="ProfileScreen" interactive>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text 
+            style={styles.headerTitle}
+            onLongPress={async () => {
+              try {
+                await CacheService.clearAllCache();
+                Alert.alert('Cache Cleared', 'All cached data has been cleared.');
+              } catch (error) {
+                Alert.alert('Error', 'Failed to clear cache.');
+              }
+            }}
+          >
+            Profile
+          </Text>
+          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
 
       <ScrollView contentContainerStyle={styles.profilePageContent}>
         {/* Profile Header */}
@@ -2486,7 +2718,7 @@ const ProfileScreen: React.FC = () => {
               name={profile.name || `${profile.firstName || ''} ${profile.lastName || ''}`.trim()}
               size={120}
               fallbackText="??"
-              userPhotoUrl={profile.avatarUrl}
+              userPhotoUrl={profile.avatar_url}
               forceInitials={false}
             />
             <TouchableOpacity style={styles.profileUploadButton} onPress={handleImageUpload}>
@@ -2638,6 +2870,32 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Notification Settings */}
+        <View style={styles.profileSection}>
+          <Text style={styles.profileSectionTitle}>Notifications</Text>
+          <View style={styles.profileInfoItem}>
+            <Text style={styles.profileInfoIcon}>🔔</Text>
+            <View style={styles.profileInfoContent}>
+              <Text style={styles.profileInfoLabel}>Push Notifications</Text>
+              <Text style={styles.profileInfoValue}>
+                {user?.notification_preferences?.push_enabled ? 'Enabled' : 'Disabled'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.notificationToggle,
+                user?.notification_preferences?.push_enabled && styles.notificationToggleActive
+              ]}
+              onPress={() => handleNotificationToggle(!user?.notification_preferences?.push_enabled)}
+            >
+              <View style={[
+                styles.notificationToggleThumb,
+                user?.notification_preferences?.push_enabled && styles.notificationToggleThumbActive
+              ]} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Action Buttons */}
         <View style={styles.profilePageActions}>
           <TouchableOpacity style={styles.profilePageActionButton} onPress={handleEditProfile}>
@@ -2667,13 +2925,28 @@ const ProfileScreen: React.FC = () => {
           availableCategories={availableCategories}
           selectedCategories={profile.professionalCategories}
           onClose={() => setShowCategoriesModal(false)}
-          onSave={(selectedCategories) => {
-            const updatedProfile = {
-              ...profile,
-              professionalCategories: selectedCategories
-            };
-            setProfile(updatedProfile);
-            setShowCategoriesModal(false);
+          onSave={async (selectedCategories) => {
+            try {
+              // Update local state immediately for UI responsiveness
+              const updatedProfile = {
+                ...profile,
+                professionalCategories: selectedCategories
+              };
+              setProfile(updatedProfile);
+              setShowCategoriesModal(false);
+              
+              // Persist to database
+              const categoryIds = selectedCategories.map((cat: any) => cat.id);
+              await ProfileService.updateUserProfessionalCategories(profile.id, categoryIds);
+              
+              // Invalidate all user-related caches to ensure fresh data on next load
+              await CacheService.invalidateUserData(user?.id);
+              
+              console.log('✅ Professional categories saved successfully');
+            } catch (error) {
+              console.error('❌ Error saving professional categories:', error);
+              Alert.alert('Error', 'Failed to save professional categories. Please try again.');
+            }
           }}
         />
       )}
@@ -2684,17 +2957,33 @@ const ProfileScreen: React.FC = () => {
           availableInterests={availableInterests}
           selectedInterests={profile.communityInterests}
           onClose={() => setShowInterestsModal(false)}
-          onSave={(selectedInterests) => {
-            const updatedProfile = {
-              ...profile,
-              communityInterests: selectedInterests
-            };
-            setProfile(updatedProfile);
-            setShowInterestsModal(false);
+          onSave={async (selectedInterests) => {
+            try {
+              // Update local state immediately for UI responsiveness
+              const updatedProfile = {
+                ...profile,
+                communityInterests: selectedInterests
+              };
+              setProfile(updatedProfile);
+              setShowInterestsModal(false);
+              
+              // Persist to database
+              const interestIds = selectedInterests.map((int: any) => int.id);
+              await ProfileService.updateUserCommunityInterests(profile.id, interestIds);
+              
+              // Invalidate all user-related caches to ensure fresh data on next load
+              await CacheService.invalidateUserData(user?.id);
+              
+              console.log('✅ Community interests saved successfully');
+            } catch (error) {
+              console.error('❌ Error saving community interests:', error);
+              Alert.alert('Error', 'Failed to save community interests. Please try again.');
+            }
           }}
         />
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    // </PerformanceMeasureView>
   );
 };
 
@@ -2725,7 +3014,7 @@ const ProfileEditModal: React.FC<{
         bio: formData.bio,
         organizationAffiliation: formData.organizationAffiliation,
         titlePosition: formData.titlePosition,
-        avatarUrl: formData.avatarUrl,
+        avatar_url: formData.avatar_url,
       });
 
       // Update professional categories
@@ -2737,6 +3026,9 @@ const ProfileEditModal: React.FC<{
       await ProfileService.updateUserCommunityInterests(formData.id, interestIds);
 
       console.log('✅ Profile saved successfully');
+      
+      // Invalidate all user-related caches to ensure fresh data on next load
+      await CacheService.invalidateUserData(formData.id);
       
       // Call onSave with the current formData instead of re-fetching
       // This avoids potential race conditions with database consistency
@@ -2825,36 +3117,8 @@ const ProfileEditModal: React.FC<{
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
-      // Create unique filename
-      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${formData.id}-${Date.now()}.${fileExt}`;
-      
-      // Create FormData for React Native
-      const formDataUpload = new FormData();
-      formDataUpload.append('file', {
-        uri: imageUri,
-        type: `image/${fileExt}`,
-        name: fileName,
-      } as any);
-      
-      // Upload to Supabase storage
-      const { data, error } = await supabase.storage
-        .from('avatars')
-        .upload(`avatars/${fileName}`, formDataUpload, {
-          contentType: `image/${fileExt}`,
-          upsert: true
-        });
-
-      if (error) {
-        console.error('Upload error:', error);
-        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
-        return;
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(`avatars/${fileName}`);
+      // Use ProfileService for consistent upload method
+      const publicUrl = await ProfileService.uploadProfileImage(formData.id, imageUri);
 
       // Update user profile with new avatar URL in database
       const { error: updateError } = await supabase
@@ -2869,8 +3133,11 @@ const ProfileEditModal: React.FC<{
       }
 
       // Update local form data with new image URL
-      const updatedFormData = { ...formData, avatarUrl: publicUrl };
+      const updatedFormData = { ...formData, avatar_url: publicUrl };
       setFormData(updatedFormData);
+      
+      // Invalidate cache to ensure consistency across the app
+      await CacheService.invalidateUserProfile();
       
       Alert.alert('Success', 'Profile picture updated successfully!');
     } catch (error) {
@@ -2879,7 +3146,7 @@ const ProfileEditModal: React.FC<{
     }
   };
 
-  const tShirtSizes = ['XS', 'S', 'M', 'L', '2XL', '3XL', '4XL'];
+  const tShirtSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
   const dietaryOptions = ['None', 'Vegan', 'Vegetarian', 'Pescatarian', 'Other'];
   const accessibilityOptions = ['None', 'Yes'];
 
@@ -2900,8 +3167,17 @@ const ProfileEditModal: React.FC<{
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.profileModalContent}>
-          {/* Profile Image Section */}
+        <KeyboardAvoidingView 
+          style={styles.profileModalContent}
+          behavior="padding"
+          keyboardVerticalOffset={100}
+        >
+          <ScrollView 
+            style={styles.profileModalContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Profile Image Section */}
           <View style={styles.profileSection}>
             <Text style={styles.profileSectionTitle}>Profile Picture</Text>
             <View style={styles.profilePageImageContainer}>
@@ -2909,7 +3185,7 @@ const ProfileEditModal: React.FC<{
                 name={formData.name || `${formData.firstName || ''} ${formData.lastName || ''}`.trim()}
                 size={120}
                 fallbackText="??"
-                userPhotoUrl={formData.avatarUrl}
+                userPhotoUrl={formData.avatar_url}
               />
               <TouchableOpacity style={styles.profileUploadButton} onPress={handleImageUpload}>
                 <Text style={styles.profileUploadButtonText}>Upload</Text>
@@ -3086,7 +3362,8 @@ const ProfileEditModal: React.FC<{
               />
             </View>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
@@ -3245,6 +3522,7 @@ const ChatScreen: React.FC<{
   const { user } = useAuth();
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showUserSelectionModal, setShowUserSelectionModal] = useState(false);
@@ -3280,12 +3558,27 @@ const ChatScreen: React.FC<{
     }
   }, [activeTab, groupFilter, user]);
 
-  const loadThreads = async () => {
+  const loadThreads = async (isRefresh = false) => {
     if (!user) return;
     
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
+      
+      // Try to load from cache first (unless refreshing)
+      if (!isRefresh) {
+        const cachedThreads = await CacheService.getChatThreads();
+        if (cachedThreads) {
+          console.log('📦 Loading chat threads from cache');
+          setThreads(cachedThreads);
+          setLoading(false);
+          // Continue to fetch fresh data in background
+        }
+      }
       
       let threadsData: any[] = [];
       
@@ -3308,6 +3601,10 @@ const ChatScreen: React.FC<{
       }
       
       setThreads(threadsData);
+      
+      // Cache the threads data
+      await CacheService.setChatThreads(threadsData);
+      
       console.log(`✅ Loaded ${threadsData.length} ${activeTab} threads:`, threadsData.map(t => ({ 
         id: t.id, 
         name: t.name, 
@@ -3320,7 +3617,12 @@ const ChatScreen: React.FC<{
       setError('Failed to load chats. Please try again.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = async () => {
+    await loadThreads(true);
   };
 
   const formatTimeAgo = (dateString: string | null): string => {
@@ -3366,11 +3668,62 @@ const ChatScreen: React.FC<{
     return 'Unnamed Chat';
   };
 
+  // Helper function to format timestamps in a friendly way
+  const formatFriendlyTimestamp = (timestamp: string): string => {
+    if (!timestamp) return '';
+    
+    const now = new Date();
+    const messageTime = new Date(timestamp);
+    const diffInHours = (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
+    
+    // If less than 24 hours, show relative time
+    if (diffInHours < 24) {
+      if (diffInHours < 1) {
+        const diffInMinutes = Math.floor(diffInHours * 60);
+        return diffInMinutes < 1 ? 'Just now' : `${diffInMinutes}m ago`;
+      } else {
+        const diffInHoursRounded = Math.floor(diffInHours);
+        return `${diffInHoursRounded}h ago`;
+      }
+    }
+    
+    // If more than 24 hours, show date
+    return messageTime.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
   const getDisplaySubtitle = (thread: any): string => {
     if (activeTab === 'notifications' && thread.event) {
       return new Date(thread.event.start_time).toLocaleDateString();
     } else if (activeTab === 'direct' && thread.otherUser) {
-      return thread.otherUser.email;
+      // Show date of last message for direct messages (same format as notifications)
+      console.log('🔍 Direct message thread data:', {
+        threadId: thread.id,
+        hasLastMessage: !!thread.lastMessage,
+        lastMessageCreatedAt: thread.lastMessage?.created_at,
+        lastMessageAt: thread.lastMessageAt,
+        lastMessageContent: thread.lastMessage?.content
+      });
+      
+      // Try to get date from lastMessage.created_at first, then fallback to thread.lastMessageAt
+      let dateToUse = null;
+      if (thread.lastMessage && thread.lastMessage.created_at) {
+        dateToUse = thread.lastMessage.created_at;
+      } else if (thread.lastMessageAt) {
+        dateToUse = thread.lastMessageAt;
+      }
+      
+      if (dateToUse) {
+        const date = new Date(dateToUse);
+        const dateString = date.toLocaleDateString();
+        console.log('📅 Generated date string:', dateString, 'from:', dateToUse);
+        return dateString;
+      }
+      
+      console.log('⚠️ No date available for thread:', thread.id);
+      return '';
     } else if (thread.description) {
       return thread.description;
     }
@@ -3487,7 +3840,9 @@ const ChatScreen: React.FC<{
         setSelectedEvent(null);
         setNotificationTitle('');
         setNotificationContent('');
-        loadThreads(); // Refresh the threads list
+        // Invalidate cache and refresh the threads list
+        await CacheService.invalidateChatThreads();
+        loadThreads();
       }
     } catch (error) {
       console.error('Error creating notification:', error);
@@ -3516,7 +3871,9 @@ const ChatScreen: React.FC<{
         Alert.alert('Success', 'Event chat created and all attendees have been added!');
         setShowEventSelectionModal(false);
         setSelectedEvent(null);
-        loadThreads(); // Refresh the threads list
+        // Invalidate cache and refresh the threads list
+        await CacheService.invalidateChatThreads();
+        loadThreads();
       }
     } catch (error) {
       console.error('Error creating event chat:', error);
@@ -3606,7 +3963,8 @@ const ChatScreen: React.FC<{
       // Navigate to the new chat thread
       setCurrentScreen(`chat-thread-${newThread.id}`);
       
-      // Refresh the threads list to show the new thread
+      // Invalidate cache and refresh the threads list to show the new thread
+      await CacheService.invalidateChatThreads();
       loadThreads();
 
     } catch (error) {
@@ -3655,7 +4013,8 @@ const ChatScreen: React.FC<{
       // Navigate to the new chat thread
       setCurrentScreen(`chat-thread-${newThread.id}`);
       
-      // Refresh the threads list to show the new thread
+      // Invalidate cache and refresh the threads list to show the new thread
+      await CacheService.invalidateChatThreads();
       loadThreads();
 
     } catch (error) {
@@ -3675,13 +4034,11 @@ const ChatScreen: React.FC<{
   const handleDeleteThread = async (thread: any) => {
     if (!user || !thread) return;
 
-    // Check if user is admin and created this thread
+    // Check if user is admin - admins can delete any thread
     const isAdmin = user.role === 'admin';
-    const isCreator = thread.created_by === user.id;
-    const isEventThread = thread.threadType === 'event' || thread.threadType === 'notification';
 
-    if (!isAdmin || !isCreator || !isEventThread) {
-      Alert.alert('Error', 'You can only delete event chats and notifications you created.');
+    if (!isAdmin) {
+      Alert.alert('Error', 'Only administrators can delete threads.');
       return;
     }
 
@@ -3706,7 +4063,9 @@ const ChatScreen: React.FC<{
                 Alert.alert('Error', 'Failed to delete thread. Please try again.');
               } else {
                 Alert.alert('Success', 'Thread deleted successfully.');
-                loadThreads(); // Refresh the threads list
+                // Invalidate cache and refresh the threads list
+                await CacheService.invalidateChatThreads();
+                loadThreads();
               }
             } catch (error) {
               console.error('Error deleting thread:', error);
@@ -3719,10 +4078,8 @@ const ChatScreen: React.FC<{
   };
 
   const renderThread = ({ item }: { item: any }) => {
-    // Check if current user can delete this thread
-    const canDelete = user?.role === 'admin' && 
-                     item.createdBy === user.id && 
-                     (item.threadType === 'event' || item.threadType === 'notification');
+    // Check if current user can delete this thread - admins can delete any thread
+    const canDelete = user?.role === 'admin';
 
     return (
       <View style={styles.chatItemContainer}>
@@ -3741,19 +4098,19 @@ const ChatScreen: React.FC<{
                 <Text style={styles.unreadText}>{item.unreadCount}</Text>
               </View>
             )}
-            <Text style={styles.chatTime}>{formatTimeAgo(item.lastMessageAt)}</Text>
+            {/* Removed duplicate timestamp - now shown in subtitle */}
           </View>
+          
+          {/* Delete Button - positioned inside the thread item */}
+          {canDelete && (
+            <TouchableOpacity
+              style={styles.threadDeleteButton}
+              onPress={() => handleDeleteThread(item)}
+            >
+              <MaterialIcons name="delete" size={16} color="#D29507" />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
-        
-        {/* Delete Button for Admin-Created Event Threads */}
-        {canDelete && (
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteThread(item)}
-          >
-            <Text style={styles.deleteButtonText}>🗑️</Text>
-          </TouchableOpacity>
-        )}
       </View>
     );
   };
@@ -3896,7 +4253,7 @@ const ChatScreen: React.FC<{
 
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadThreads}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadThreads()}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -3904,11 +4261,20 @@ const ChatScreen: React.FC<{
     );
   }
 
+  // Calculate total unread count
+  const totalUnreadCount = threads.reduce((total, thread) => total + (thread.unreadCount || 0), 0);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Messages</Text>
-      </View>
+    // <PerformanceMeasureView screenName="ChatScreen" interactive>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Messages</Text>
+          {totalUnreadCount > 0 && (
+            <View style={styles.headerUnreadBadge}>
+              <Text style={styles.headerUnreadText}>{totalUnreadCount}</Text>
+            </View>
+          )}
+        </View>
 
       {/* Chat Tabs */}
       <View style={styles.chatTabs}>
@@ -3960,13 +4326,22 @@ const ChatScreen: React.FC<{
         </View>
       )}
 
-      <FlatList
+      <FlashList
         data={threads}
         renderItem={renderThread}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: any) => item.id}
+        {...(FlashListAvailable ? { estimatedItemSize: 80 } : {})}
         contentContainerStyle={styles.chatsList}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#3B82F6']}
+            tintColor="#3B82F6"
+          />
+        }
       />
 
       {/* Floating Action Button */}
@@ -4059,10 +4434,11 @@ const ChatScreen: React.FC<{
                   <Text style={styles.loadingText}>Loading users...</Text>
                 </View>
               ) : (
-                <FlatList
+                <FlashList
                   data={availableUsers}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
+                  keyExtractor={(item: any) => item.id}
+                  {...(FlashListAvailable ? { estimatedItemSize: 60 } : {})}
+                  renderItem={({ item }: { item: any }) => (
                     <TouchableOpacity
                       style={[
                         styles.userItem,
@@ -4331,7 +4707,8 @@ const ChatScreen: React.FC<{
         </View>
       </Modal>
 
-    </SafeAreaView>
+      </SafeAreaView>
+    // </PerformanceMeasureView>
   );
 };
 
@@ -4509,13 +4886,11 @@ const ChatThreadScreen: React.FC<{
   const handleDeleteThreadFromChat = async (threadToDelete: any) => {
     if (!user || !threadToDelete) return;
 
-    // Check if user is admin and created this thread
+    // Check if user is admin - admins can delete any thread
     const isAdmin = user.role === 'admin';
-    const isCreator = threadToDelete.createdBy === user.id;
-    const isEventThread = threadToDelete.threadType === 'event' || threadToDelete.threadType === 'notification';
 
-    if (!isAdmin || !isCreator || !isEventThread) {
-      Alert.alert('Error', 'You can only delete event chats and notifications you created.');
+    if (!isAdmin) {
+      Alert.alert('Error', 'Only administrators can delete threads.');
       return;
     }
 
@@ -4721,15 +5096,6 @@ const ChatThreadScreen: React.FC<{
           <Text style={[styles.messageTime, isOwnMessage && styles.ownMessageTime]}>
             {formatTime(item.createdAt)}
           </Text>
-          {/* Add delete button for messages that can be deleted */}
-          {canDelete && thread?.threadType !== 'notification' && (
-            <TouchableOpacity
-              style={styles.messageDeleteButton}
-              onPress={() => handleDeleteMessage(item)}
-            >
-              <Text style={styles.messageDeleteButtonText}>🗑️</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     );
@@ -4781,30 +5147,25 @@ const ChatThreadScreen: React.FC<{
         </TouchableOpacity>
         <Text style={styles.chatHeaderTitle}>{getThreadTitle()}</Text>
         <View style={styles.chatHeaderRight}>
-          {/* Delete button for admin-created event threads */}
-          {user?.role === 'admin' && 
-           thread?.createdBy === user.id && 
-           (thread?.threadType === 'event' || thread?.threadType === 'notification') && (
-            <TouchableOpacity 
-              style={styles.headerDeleteButton}
-              onPress={() => handleDeleteThreadFromChat(thread)}
-            >
-              <Text style={styles.headerDeleteButtonText}>🗑️</Text>
-            </TouchableOpacity>
-          )}
-          
-          {/* Members button for group chats */}
-          {thread?.type === 'group' && (
+          {/* Members button for group and event chats */}
+          {(thread?.type === 'group' || thread?.type === 'event') && (
             <TouchableOpacity onPress={() => setShowMembersModal(true)}>
               <Text style={styles.membersButton}>Members</Text>
             </TouchableOpacity>
           )}
           
+          {/* Delete button for admins - can delete any thread (moved to far right) */}
+          {user?.role === 'admin' && (
+            <TouchableOpacity 
+              style={styles.headerDeleteButton}
+              onPress={() => handleDeleteThreadFromChat(thread)}
+            >
+              <MaterialIcons name="delete" size={16} color="#D29507" />
+            </TouchableOpacity>
+          )}
+          
           {/* Spacer if no right buttons */}
-          {!(user?.role === 'admin' && 
-             thread?.createdBy === user.id && 
-             (thread?.threadType === 'event' || thread?.threadType === 'notification')) &&
-           thread?.type !== 'group' && (
+          {!(user?.role === 'admin') && thread?.type !== 'group' && (
             <View style={{ width: 50 }} />
           )}
         </View>
@@ -4812,14 +5173,24 @@ const ChatThreadScreen: React.FC<{
 
       <View style={styles.chatContentContainer}>
         {/* Messages List */}
-        <FlatList
+        <FlashList
           data={messages}
           renderItem={renderMessage}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={(item: any, index: number) => `${item.id}-${index}`}
+          {...(FlashListAvailable ? { estimatedItemSize: 115 } : {})}
           style={styles.messagesList}
           contentContainerStyle={styles.messagesContainer}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadMessages}
+              tintColor="#D29507"
+              colors={['#D29507']}
+              progressBackgroundColor="#FFFFFF"
+            />
+          }
         />
 
         {/* Message Input - Hide for notification threads */}
@@ -4883,10 +5254,11 @@ const ChatThreadScreen: React.FC<{
               <Text style={styles.loadingText}>Loading members...</Text>
             </View>
           ) : (
-            <FlatList
+            <FlashList
               data={threadMembers}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
+              keyExtractor={(item: any) => item.id}
+              {...(FlashListAvailable ? { estimatedItemSize: 60 } : {})}
+              renderItem={({ item }: { item: any }) => (
                 <View style={styles.userItem}>
                   <AvatarComponent
                     name={item.users?.name || 'Unknown User'}
@@ -4938,10 +5310,11 @@ const ChatThreadScreen: React.FC<{
               <Text style={styles.loadingText}>Loading users...</Text>
             </View>
           ) : (
-            <FlatList
+            <FlashList
               data={availableUsersForAdd}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
+              keyExtractor={(item: any) => item.id}
+              {...(FlashListAvailable ? { estimatedItemSize: 60 } : {})}
+              renderItem={({ item }: { item: any }) => (
                 <TouchableOpacity
                   style={[
                     styles.userItem,
@@ -4999,6 +5372,7 @@ const ChatThreadScreen: React.FC<{
 
 // Main App with Navigation
 const MainApp: React.FC = () => {
+  const { user } = useAuth();
   const [currentScreen, setCurrentScreen] = useState('events');
   const [navigationHistory, setNavigationHistory] = useState<string[]>(['events']);
   const [chatTabState, setChatTabState] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
@@ -5090,6 +5464,18 @@ const MainApp: React.FC = () => {
     setEntityCardModalVisible(true);
   };
 
+  // Initialize notifications when user is available
+  useEffect(() => {
+    const initializeNotifications = async () => {
+      if (user?.notification_preferences?.push_enabled) {
+        console.log('🔔 Initializing notifications for user:', user.email);
+        await NotificationService.initialize();
+      }
+    };
+
+    initializeNotifications();
+  }, [user?.notification_preferences?.push_enabled, user?.email]);
+
   return (
     <SafeAreaView style={styles.container}>
       {renderScreen()}
@@ -5151,6 +5537,21 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#265451',
+  },
+  headerUnreadBadge: {
+    backgroundColor: '#D29507',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginLeft: 8,
+  },
+  headerUnreadText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   dataSourceIndicator: {
     paddingHorizontal: 8,
@@ -5559,6 +5960,25 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 16,
   },
+  // Thread delete button - positioned inside thread item
+  threadDeleteButton: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   unreadBadge: {
     backgroundColor: '#D29507',
     width: 18,
@@ -5683,16 +6103,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerDeleteButton: {
-    padding: 8,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 36,
-    minHeight: 36,
-  },
-  headerDeleteButtonText: {
-    fontSize: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -5771,6 +6194,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 20,
     paddingVertical: 15,
+    paddingBottom: 27, // Added 12px extra space (15 + 12 = 27)
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
@@ -5905,24 +6329,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F8F9FA',
     paddingRight: 20,
-  },
-  deleteButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#6B7280',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  deleteButtonText: {
-    fontSize: 16,
-    color: 'white',
-    fontWeight: '500',
   },
   // Inline message delete button styles
   messageDeleteButton: {
@@ -6633,6 +7039,32 @@ const styles = StyleSheet.create({
   },
   eventActionButtonTextDisabled: {
     color: '#D1D5DB',
+  },
+  // Notification toggle styles
+  notificationToggle: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  notificationToggleActive: {
+    backgroundColor: '#D29507',
+  },
+  notificationToggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  notificationToggleThumbActive: {
+    transform: [{ translateX: 20 }],
   },
 });
 

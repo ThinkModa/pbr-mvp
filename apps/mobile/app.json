@@ -14,13 +14,15 @@
     },
     "android": {
       "package": "com.thinkmodalabs.pbrmvp",
-      "versionCode": 3
+        "versionCode": 11,
+      "googleServicesFile": "./google-services.json"
     },
     "ios": {
       "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
-      "buildNumber": "3",
+        "buildNumber": "14",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"],
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "GoogleSignIn",
@@ -45,10 +47,18 @@
     },
     "runtimeVersion": "1.0.0",
     "updates": {
-      "url": "https://u.expo.dev/b7bbb674-9236-46b7-b271-a12902508678"
+      "url": "https://u.expo.dev/b7bbb674-9236-46b7-b271-a12902508678",
+      "enabled": false
+    },
+    "notification": {
+      "icon": "./assets/notification_icon_1.png",
+      "color": "#D29507",
+      "androidMode": "default",
+      "androidCollapsedTitle": "{{unread_count}} new notifications"
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications"
     ]
   }
 }

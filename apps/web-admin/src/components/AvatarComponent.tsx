@@ -114,3 +114,4 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
 };
 
 export default AvatarComponent;
+

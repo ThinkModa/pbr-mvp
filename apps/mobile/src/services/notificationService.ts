@@ -110,7 +110,12 @@ export class NotificationService {
         });
 
       if (error) {
-        console.error('❌ Error storing push token:', error);
+        // Check if it's a duplicate key error (expected behavior)
+        if (error.code === '23505') {
+          console.log('📱 Push token already exists (expected):', this.expoPushToken);
+        } else {
+          console.error('❌ Error storing push token:', error);
+        }
       } else {
         console.log('✅ Push token stored successfully');
       }
@@ -218,6 +223,33 @@ export class NotificationService {
   }
 
   /**
+   * Get user notification preferences
+   */
+  private static async getUserNotificationPreferences(userId: string): Promise<{ push_enabled: boolean; events_enabled: boolean; chat_enabled: boolean } | null> {
+    try {
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('notification_preferences')
+        .eq('id', userId)
+        .single();
+
+      if (error || !user) {
+        console.error('❌ Error fetching user notification preferences:', error);
+        return null;
+      }
+
+      return user.notification_preferences || {
+        push_enabled: true,
+        events_enabled: true,
+        chat_enabled: true,
+      };
+    } catch (error) {
+      console.error('❌ Error getting user notification preferences:', error);
+      return null;
+    }
+  }
+
+  /**
    * Send push notification to thread members
    */
   private static async sendPushNotificationToThread(notification: ChatNotificationData): Promise<void> {
@@ -245,12 +277,17 @@ export class NotificationService {
       if (!user) return;
 
       // Send push notifications to all members except current user
-      const pushTokens = members
-        .filter(member => member.user_id !== user.id)
-        .flatMap(member => 
-          member.users?.user_push_tokens?.map(token => token.push_token) || []
-        )
-        .filter(token => token);
+      const pushTokens = [];
+      for (const member of members) {
+        if (member.user_id !== user.id) {
+          // Check user's notification preferences
+          const preferences = await this.getUserNotificationPreferences(member.user_id);
+          if (preferences?.push_enabled && preferences?.chat_enabled) {
+            const tokens = member.users?.user_push_tokens?.map(token => token.push_token) || [];
+            pushTokens.push(...tokens.filter(token => token));
+          }
+        }
+      }
 
       if (pushTokens.length > 0) {
         await this.sendExpoPushNotifications(pushTokens, notification);

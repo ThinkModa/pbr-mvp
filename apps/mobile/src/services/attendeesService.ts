@@ -84,7 +84,7 @@ class AttendeesService {
       console.log('Getting attendee count for event:', eventId);
       
       const response = await fetch(
-        `${AttendeesService.SUPABASE_URL}/rest/v1/event_rsvps?select=*&event_id=eq.${eventId}&status=eq.attending`,
+        `${AttendeesService.SUPABASE_URL}/rest/v1/event_rsvps?select=*&event_id=eq.${eventId}&status=in.(attending,pending)`,
         {
           headers: {
             ...this.getHeaders(),

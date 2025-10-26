@@ -1,18 +1,20 @@
 /**
  * AvatarComponent
  * 
- * Displays user avatars with the following behavior:
+ * Simplified avatar logic:
  * 
- * 1. PROFILE PAGES: Shows user-uploaded photo if available, otherwise generated initials avatar
- * 2. MESSAGING: Always shows initials only (forceInitials=true) for privacy and consistency
- * 3. FALLBACK: Shows initials if image fails to load
+ * 1. DEFAULT: Shows initials (derived from first/last name, whether from Google Sign-in or manual sign-up)
+ * 2. UPLOADED PHOTO: Once uploaded, that becomes the permanent profile picture everywhere
+ * 3. GOOGLE PHOTOS: Completely ignored - only use first/last name for initials
+ * 4. MESSAGING: Always shows initials only (forceInitials=true) for privacy and consistency
+ * 5. FALLBACK: Shows initials if image fails to load
  * 
  * Usage:
- * - Profile: <AvatarComponent name="John Doe" userPhotoUrl={user.avatarUrl} />
+ * - Profile: <AvatarComponent name="John Doe" userPhotoUrl={user.avatar_url} />
  * - Messaging: <AvatarComponent name="John Doe" forceInitials={true} />
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Image, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { AvatarService } from '../services/avatarService';
 
@@ -42,20 +44,72 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
   allowExternalImages = false
 }) => {
   const [imageError, setImageError] = useState(false);
-  const [imageLoading, setImageLoading] = useState(true);
+  const [imageLoading, setImageLoading] = useState(!!userPhotoUrl);
+  const [loadTimeout, setLoadTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  // Reset loading state when userPhotoUrl changes
+  useEffect(() => {
+    if (userPhotoUrl) {
+      // Start with loading state
+      setImageLoading(true);
+      setImageError(false);
+      
+      // Clear any existing timeout
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        setLoadTimeout(null);
+      }
+      
+      // Shorter timeout as fallback - if onLoad doesn't fire, assume loaded
+      const timeout = setTimeout(() => {
+        console.log('🎭 Image load timeout, assuming loaded:', userPhotoUrl);
+        setImageLoading(false);
+        setLoadTimeout(null);
+      }, 800); // Shorter timeout to reduce race condition window
+      
+      setLoadTimeout(timeout);
+      
+      return () => {
+        clearTimeout(timeout);
+        setLoadTimeout(null);
+      };
+    } else {
+      setImageLoading(false);
+      setImageError(false);
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        setLoadTimeout(null);
+      }
+    }
+  }, [userPhotoUrl]);
 
   // console.log('🎭 AvatarComponent rendered with props:', { name, size, userPhotoUrl, forceInitials });
 
   const handleImageError = () => {
-    // console.log('🎭 Google profile image failed to load, falling back to initials');
+    console.log('🎭 Profile image failed to load, falling back to initials:', userPhotoUrl);
     setImageError(true);
     setImageLoading(false);
     onError?.();
   };
 
+  const handleImageLoadStart = () => {
+    console.log('🎭 Profile image load started:', userPhotoUrl);
+    setImageLoading(true);
+    setImageError(false);
+  };
+
   const handleImageLoad = () => {
-    // console.log('🎭 Google profile image loaded successfully');
+    console.log('🎭 Profile image loaded successfully:', userPhotoUrl);
+    
+    // Clear the timeout first to prevent race conditions
+    if (loadTimeout) {
+      clearTimeout(loadTimeout);
+      setLoadTimeout(null);
+    }
+    
+    // Then update the loading state
     setImageLoading(false);
+    setImageError(false);
   };
 
   const getAvatarUrl = () => {
@@ -112,8 +166,8 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
 
   // Determine what to show
   const shouldShowInitials = imageError || showInitials || forceInitials;
-  // For regular users: only uploaded photos (avatars/), for speakers/vendors/sponsors: any valid image URL
-  const hasValidImage = userPhotoUrl && !forceInitials && (allowExternalImages ? true : userPhotoUrl.includes('avatars/'));
+  // Simplified logic: uploaded photos (profile-images/) override everything, external images for speakers/vendors/sponsors
+  const hasValidImage = userPhotoUrl && !forceInitials && (allowExternalImages ? true : userPhotoUrl.includes('profile-images/'));
   
   console.log('🎭 AvatarComponent rendering decision:', {
     name,
@@ -159,13 +213,15 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
               borderRadius: size / 2,
             },
           ]}
+          onLoadStart={handleImageLoadStart}
           onError={handleImageError}
           onLoad={handleImageLoad}
           resizeMode="cover"
         />
+        {/* Show initials as background while loading - very subtle */}
         {imageLoading && (
           <View style={[styles.loadingOverlay, { borderRadius: size / 2 }]}>
-            <Text style={textStyleCombined}>
+            <Text style={[textStyleCombined, { opacity: 0.1 }]}>
               {getInitials()}
             </Text>
           </View>
@@ -187,6 +243,7 @@ const AvatarComponent: React.FC<AvatarComponentProps> = ({
             borderRadius: size / 2,
           },
         ]}
+        onLoadStart={handleImageLoadStart}
         onError={handleImageError}
         onLoad={handleImageLoad}
         resizeMode="cover"
@@ -223,7 +280,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.02)', // Even more subtle background
   },
 });
 

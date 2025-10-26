@@ -28,6 +28,11 @@ interface User {
   avatar_url?: string;
   is_active?: boolean;
   preferences?: any;
+  notification_preferences?: {
+    push_enabled: boolean;
+    events_enabled: boolean;
+    chat_enabled: boolean;
+  };
   last_login_at?: string;
   created_at?: string;
   updated_at?: string;
@@ -56,6 +61,7 @@ interface AuthContextType {
   // User management
   refreshUser: () => Promise<void>;
   testConnection: () => Promise<boolean>;
+  updateNotificationPreferences: (preferences: { push_enabled: boolean; events_enabled: boolean; chat_enabled: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -308,8 +314,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     if (!user?.id) return;
 
+    console.log('🔔 Setting up real-time subscription for user:', user.id);
+
     const subscription = supabase
-      .channel('user-profile-changes')
+      .channel(`user-profile-changes-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -319,15 +327,64 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           filter: `id=eq.${user.id}`,
         },
         async (payload) => {
-          console.log('User profile updated:', payload);
-          // Refresh user data when profile changes
+          console.log('🔔 User profile updated via real-time:', payload);
+          console.log('🔄 Refreshing user data due to profile change...');
+          // Force refresh user data when profile changes
           await refreshUser();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 User profile subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Successfully subscribed to user profile changes for user:', user.id);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Failed to subscribe to user profile changes for user:', user.id);
+          // Retry subscription after a delay
+          setTimeout(() => {
+            console.log('🔄 Retrying user profile subscription...');
+            subscription.unsubscribe();
+            // The useEffect will re-run and create a new subscription
+          }, 5000);
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ User profile subscription timed out, retrying...');
+          subscription.unsubscribe();
+        }
+      });
 
     return () => {
+      console.log('🧹 Cleaning up user profile subscription for user:', user.id);
       subscription.unsubscribe();
+    };
+  }, [user?.id]);
+
+  // Force refresh user data when app comes to foreground
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active' && user?.id) {
+        console.log('📱 App became active, refreshing user data and invalidating cache...');
+        // Force refresh user data when app comes to foreground
+        refreshUser();
+        // Note: Removed automatic cache invalidation to maintain performance
+        // Cache will be invalidated only when needed (e.g., after data changes)
+        
+        // Force refresh user data to pick up any role changes
+        setTimeout(() => {
+          refreshUser();
+        }, 1000);
+        
+        // Initialize notifications for new users
+        if (user?.notification_preferences?.push_enabled) {
+          import('../services/notificationService').then(({ NotificationService }) => {
+            NotificationService.initialize();
+          });
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription?.remove();
     };
   }, [user?.id]);
 
@@ -464,20 +521,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       if (userProfile) {
-        console.log('User profile loaded:', userProfile.email, userProfile.role);
-        const user: User = {
-          id: userProfile.id,
-          email: userProfile.email,
-          name: userProfile.name,
-          role: userProfile.role as 'admin' | 'business' | 'general',
-          avatar_url: userProfile.avatar_url,
-          is_active: userProfile.is_active,
-          preferences: userProfile.preferences,
-          last_login_at: userProfile.last_login_at,
-          created_at: userProfile.created_at,
-          updated_at: userProfile.updated_at,
-        };
-        setUser(user);
+        console.log('📊 User profile loaded:', userProfile.email, 'Role:', userProfile.role);
+        console.log('🕒 Profile updated at:', userProfile.updated_at);
+        
+        // Check if we need to update the user (compare timestamps)
+        const currentUser = user;
+        const shouldUpdate = !currentUser || 
+          !currentUser.updated_at || 
+          new Date(userProfile.updated_at) > new Date(currentUser.updated_at);
+        
+        if (shouldUpdate) {
+          console.log('🔄 Updating user data (database is newer or first load)');
+          const user: User = {
+            id: userProfile.id,
+            email: userProfile.email,
+            name: userProfile.name,
+            role: userProfile.role as 'admin' | 'business' | 'general',
+            avatar_url: userProfile.avatar_url,
+            is_active: userProfile.is_active,
+            preferences: userProfile.preferences,
+            notification_preferences: userProfile.notification_preferences || {
+              push_enabled: true,
+              events_enabled: true,
+              chat_enabled: true,
+            },
+            last_login_at: userProfile.last_login_at,
+            created_at: userProfile.created_at,
+            updated_at: userProfile.updated_at,
+          };
+          setUser(user);
+          console.log('✅ User data updated successfully');
+        } else {
+          console.log('ℹ️ User data is up to date, no update needed');
+        }
         setLoading(false);
       } else {
         console.log('No user profile found, creating one...');
@@ -540,7 +616,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             lastName: userData.lastName,     // Add explicit field
             phone: userData.phone,
             role: userData.role,
-          }
+          },
+          emailRedirectTo: 'com.thinkmodalabs.pbr-mvp://verify-email'
         }
       });
 
@@ -590,7 +667,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('🔐 Attempting password reset for:', email);
       
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://zqjziejllixifpwzbdnf.supabase.co/auth/v1/verify',
+        redirectTo: 'com.thinkmodalabs.pbr-mvp://reset-password',
       });
 
       if (error) {
@@ -717,11 +794,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Sign out
   const signOut = async () => {
     try {
+      console.log('🚪 Signing out user...');
+      
+      // Clear all local state first
+      setUser(null);
+      setLoading(false);
+      
+      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Signout error:', error);
         return { error };
       }
+      
+      // Clear AsyncStorage to ensure clean state
+      await AsyncStorage.multiRemove([
+        'supabase.auth.token',
+        'supabase.auth.refresh_token',
+        'supabase.auth.user'
+      ]);
+      
+      console.log('✅ User signed out successfully');
       return { error: null };
     } catch (error) {
       console.error('Signout exception:', error);
@@ -729,15 +822,61 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Refresh user
+  // Refresh user with improved error handling and logging
   const refreshUser = async () => {
     try {
-      const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+      console.log('🔄 Starting user refresh...');
+      const { data: { user: supabaseUser }, error: getUserError } = await supabase.auth.getUser();
+      
+      if (getUserError) {
+        console.error('❌ Error getting user for refresh:', getUserError);
+        return;
+      }
+      
       if (supabaseUser) {
+        console.log('👤 Refreshing profile for user:', supabaseUser.email);
         await loadUserProfile(supabaseUser);
+        console.log('✅ User refresh completed');
+      } else {
+        console.log('⚠️ No user found during refresh');
+        setUser(null);
       }
     } catch (error) {
-      console.error('Refresh user error:', error);
+      console.error('💥 Refresh user error:', error);
+    }
+  };
+
+  // Update notification preferences
+  const updateNotificationPreferences = async (preferences: { push_enabled: boolean; events_enabled: boolean; chat_enabled: boolean }) => {
+    try {
+      if (!user?.id) {
+        console.error('❌ No user found to update preferences');
+        return;
+      }
+
+      console.log('🔔 Updating notification preferences:', preferences);
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          notification_preferences: preferences,
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('❌ Error updating notification preferences:', error);
+        return;
+      }
+
+      // Update local user state without changing updated_at to avoid triggering real-time updates
+      setUser(prevUser => prevUser ? {
+        ...prevUser,
+        notification_preferences: preferences,
+      } : null);
+
+      console.log('✅ Notification preferences updated successfully');
+    } catch (error) {
+      console.error('💥 Error updating notification preferences:', error);
     }
   };
 
@@ -754,6 +893,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signOut,
     refreshUser,
     testConnection,
+    updateNotificationPreferences,
   };
 
   return (

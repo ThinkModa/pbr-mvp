@@ -3,6 +3,10 @@
 //
 // CRITICAL RULE: Test environment must ALWAYS use live database data, never mock data.
 // This ensures real-time sync between desktop admin and mobile app for true integration testing.
+//
+// PERFORMANCE: Now includes caching for faster loading times
+
+import CacheService from './cacheService';
 
 export interface EventWithActivities {
   id: string;
@@ -63,9 +67,74 @@ export class EventsService {
   private static readonly SUPABASE_URL = 'https://zqjziejllixifpwzbdnf.supabase.co';
   private static readonly SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxanppZWpsbGl4aWZwd3piZG5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNzgxMzIsImV4cCI6MjA3NTY1NDEzMn0.xCpv4401K5-WzojCMLy4HdY5xQJBP9xbar1sJTFkVgc';
 
-  // Get all published events with their activities
+  // Get lightweight events list for initial loading (cached)
+  static async getEventsList(): Promise<EventWithActivities[]> {
+    console.log('🚀 Getting events list (with caching)...');
+    
+    // Try to get from cache first
+    const cachedEvents = await CacheService.getEventsList();
+    if (cachedEvents) {
+      console.log('📦 Using cached events list');
+      return cachedEvents;
+    }
+
+    console.log('📡 Fetching events list from database...');
+    const response = await fetch(
+      `${this.SUPABASE_URL}/rest/v1/events?select=id,title,start_time,end_time,location,cover_image_url,is_free,price,show_capacity,show_price,show_attendee_count,has_tracks,max_capacity&is_public=eq.true&status=eq.published&order=start_time.asc`,
+      {
+        headers: {
+          'apikey': this.SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error:', errorText);
+      throw new Error(`Failed to fetch events list. HTTP ${response.status}: ${errorText}`);
+    }
+
+    const events = await response.json();
+    console.log('✅ Successfully fetched', events.length, 'events list from database');
+    
+    // Transform events to extract coordinates from location JSONB field
+    const transformedEvents = events.map((event: any) => {
+      const location = event.location;
+      if (location && location.coordinates) {
+        event.latitude = location.coordinates.lat;
+        event.longitude = location.coordinates.lng;
+        event.location_address = location.address || location.name;
+      }
+      return event;
+    });
+
+    // Set default attendee count to 0 - will be fetched separately by components
+    const eventsWithCounts = transformedEvents.map((event: any) => {
+      event.current_rsvps = 0; // Default value, will be updated by components
+      return event;
+    });
+
+    // Cache the results
+    await CacheService.setEventsList(eventsWithCounts);
+    console.log('📦 Cached events list with attendee counts');
+    
+    return eventsWithCounts || [];
+  }
+
+  // Get all published events with their activities (full data, cached)
   static async getEvents(): Promise<EventWithActivities[]> {
-    console.log('Fetching events from live Supabase database...');
+    console.log('🚀 Getting events with activities (with caching)...');
+    
+    // Try to get from cache first
+    const cachedEvents = await CacheService.getEvents();
+    if (cachedEvents) {
+      console.log('📦 Using cached events with activities');
+      return cachedEvents;
+    }
+
+    console.log('📡 Fetching events with activities from database...');
     const response = await fetch(
       `${this.SUPABASE_URL}/rest/v1/events?select=*,activities(*)&is_public=eq.true&status=eq.published&order=start_time.asc`,
       {
@@ -133,15 +202,25 @@ export class EventsService {
       }
     }
     
+    // Cache the results
+    await CacheService.setEvents(transformedEvents);
+    console.log('📦 Cached events with activities');
+    
     return transformedEvents || [];
   }
 
   // NOTE: No mock data - test environment must always use live database
 
-  // Get a single event by ID
+  // Get a single event by ID (uses cached data if available)
   static async getEventById(eventId: string): Promise<EventWithActivities | null> {
     const events = await this.getEvents();
     return events.find(event => event.id === eventId) || null;
+  }
+
+  // Invalidate events cache (call when events are updated)
+  static async invalidateCache(): Promise<void> {
+    console.log('🗑️ Invalidating events cache...');
+    await CacheService.invalidateEvents();
   }
 
   // Get upcoming events (events that haven't started yet)

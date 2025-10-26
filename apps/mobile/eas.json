@@ -7,11 +7,25 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
+        "simulator": true,
+        "buildConfiguration": "Debug"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "development-no-push": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
         "simulator": false,
         "buildConfiguration": "Debug"
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "DISABLE_PUSH_NOTIFICATIONS": "true"
       }
     },
     "staging": {
@@ -47,6 +61,13 @@
       "env": {
         "APP_ENV": "staging"
       },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "testflight-internal": {
+      "distribution": "internal",
+      "channel": "testflight-internal",
       "ios": {
         "buildConfiguration": "Release"
       }

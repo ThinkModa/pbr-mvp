@@ -9,11 +9,23 @@ export interface EventTrack {
   max_capacity?: number;
   display_order: number;
   is_active: boolean;
+  track_group_id?: string;
   created_at: string;
   updated_at: string;
   // Computed fields
   current_rsvps?: number;
   activities?: any[];
+  track_group?: TrackGroup;
+}
+
+export interface TrackGroup {
+  id: string;
+  event_id: string;
+  name: string;
+  description?: string;
+  is_mutually_exclusive: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TrackActivity {
@@ -253,6 +265,54 @@ export class TrackService {
       return capacity.current_rsvps >= capacity.max_capacity;
     } catch (error) {
       console.error('Error checking track capacity:', error);
+      throw error;
+    }
+  }
+
+  // Track Group Methods
+
+  // Get track groups for an event
+  static async getTrackGroups(eventId: string): Promise<TrackGroup[]> {
+    try {
+      const response = await fetch(
+        `${this.SUPABASE_URL}/rest/v1/track_groups?select=*&event_id=eq.${eventId}&order=created_at.asc`,
+        {
+          headers: this.getHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch track groups: ${response.status}`);
+      }
+
+      const groups = await response.json();
+      console.log('✅ Retrieved track groups:', groups.length);
+      return groups || [];
+    } catch (error) {
+      console.error('Error getting track groups:', error);
+      throw error;
+    }
+  }
+
+  // Get tracks with their groups
+  static async getEventTracksWithGroups(eventId: string): Promise<EventTrack[]> {
+    try {
+      const response = await fetch(
+        `${this.SUPABASE_URL}/rest/v1/event_tracks?select=*,track_group:track_groups(*)&event_id=eq.${eventId}&order=display_order.asc`,
+        {
+          headers: this.getHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch event tracks with groups: ${response.status}`);
+      }
+
+      const tracks = await response.json();
+      console.log('✅ Retrieved event tracks with groups:', tracks.length);
+      return tracks || [];
+    } catch (error) {
+      console.error('Error getting event tracks with groups:', error);
       throw error;
     }
   }

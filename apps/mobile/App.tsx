@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -13,14 +13,75 @@ import {
   AppRegistry,
   FlatList,
 } from 'react-native';
+// import { PerformanceProfiler, RenderPassReport, LogLevel } from '@shopify/react-native-performance';
 import { AuthProvider, useAuth } from './src/contexts/SupabaseAuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import MainApp from './src/components/MainApp';
+import CacheService from './src/services/cacheService';
+
+// Error Boundary Component
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('🚨 App Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorTitle}>Something went wrong</Text>
+            <Text style={styles.errorSubtitle}>The app encountered an unexpected error</Text>
+            <TouchableOpacity 
+              style={styles.retryButton} 
+              onPress={() => this.setState({ hasError: false, error: null })}
+            >
+              <Text style={styles.retryButtonText}>Restart App</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 
 // App Content Component
 const AppContent: React.FC = () => {
   const { user, loading, isConnected, connectionError, testConnection } = useAuth();
+
+  // Check for corrupted cache on app start
+  useEffect(() => {
+    const checkCache = async () => {
+      try {
+        await CacheService.clearCorruptedCache();
+      } catch (error) {
+        console.error('Error checking cache on app start:', error);
+      }
+    };
+    
+    checkCache();
+  }, []);
 
   // Handle connection errors
   if (connectionError && !loading) {
@@ -75,10 +136,27 @@ const AppContent: React.FC = () => {
 
 // Main App Component
 export default function App() {
+  // const onReportPrepared = useCallback((report: RenderPassReport) => {
+  //   // Log performance reports in development
+  //   if (__DEV__) {
+  //     console.log('🚀 Performance Report:', {
+  //       screen: report.destinationScreen,
+  //       renderTime: `${report.timeToRenderMillis}ms`,
+  //       interactive: report.interactive,
+  //       flowInstanceId: report.flowInstanceId
+  //     });
+  //   }
+  //   
+  //   // In production, you could send this to analytics
+  //   // Example: Analytics.track('performance_report', report);
+  // }, []);
+
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -106,6 +184,12 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 18,
     color: '#933B25',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  errorSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
     marginBottom: 24,
     textAlign: 'center',
   },

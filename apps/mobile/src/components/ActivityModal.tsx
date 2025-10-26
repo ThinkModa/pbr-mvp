@@ -10,7 +10,11 @@ import {
   SafeAreaView,
   Image,
   RefreshControl,
+  Platform,
+  Linking,
+  Alert,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { RSVPService } from '../services/rsvpService';
 import { SpeakersService, ActivitySpeaker } from '../services/speakersService';
 import AvatarComponent from './AvatarComponent';
@@ -30,6 +34,9 @@ interface Activity {
   start_time: string;
   end_time: string;
   location: { name: string } | null;
+  location_address?: string;
+  latitude?: number;
+  longitude?: number;
   max_capacity: number | null;
   current_rsvps: number;
   is_required: boolean;
@@ -295,6 +302,91 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
     }
   };
 
+  const handleMapPress = async (activity: Activity) => {
+    console.log('🗺️ Map pressed for activity:', activity.title);
+    
+    try {
+      // Check if we have coordinates
+      if (activity.latitude && activity.longitude) {
+        const lat = activity.latitude;
+        const lng = activity.longitude;
+        const title = encodeURIComponent(activity.title);
+        
+        const appleMapsUrl = `http://maps.apple.com/?q=${title}&ll=${lat},${lng}`;
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        
+        if (Platform.OS === 'ios') {
+          const { ActionSheetIOS } = require('react-native');
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: 'Open in Maps',
+              message: 'Choose your preferred maps app',
+              options: ['Cancel', 'Apple Maps', 'Google Maps'],
+              cancelButtonIndex: 0,
+            },
+            async (buttonIndex: number) => {
+              if (buttonIndex === 1) {
+                await Linking.openURL(appleMapsUrl);
+              } else if (buttonIndex === 2) {
+                await Linking.openURL(googleMapsUrl);
+              }
+            }
+          );
+        } else {
+          Alert.alert(
+            'Open in Maps',
+            'Choose your preferred maps app',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Google Maps', onPress: () => Linking.openURL(googleMapsUrl) },
+              { text: 'Apple Maps', onPress: () => Linking.openURL(appleMapsUrl) },
+            ]
+          );
+        }
+      } else if (activity.location_address) {
+        const address = encodeURIComponent(activity.location_address);
+        const title = encodeURIComponent(activity.title);
+        
+        const appleMapsUrl = `http://maps.apple.com/?q=${title}&address=${address}`;
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+        
+        if (Platform.OS === 'ios') {
+          const { ActionSheetIOS } = require('react-native');
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: 'Open in Maps',
+              message: 'Choose your preferred maps app',
+              options: ['Cancel', 'Apple Maps', 'Google Maps'],
+              cancelButtonIndex: 0,
+            },
+            async (buttonIndex: number) => {
+              if (buttonIndex === 1) {
+                await Linking.openURL(appleMapsUrl);
+              } else if (buttonIndex === 2) {
+                await Linking.openURL(googleMapsUrl);
+              }
+            }
+          );
+        } else {
+          Alert.alert(
+            'Open in Maps',
+            'Choose your preferred maps app',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Google Maps', onPress: () => Linking.openURL(googleMapsUrl) },
+              { text: 'Apple Maps', onPress: () => Linking.openURL(appleMapsUrl) },
+            ]
+          );
+        }
+      } else {
+        Alert.alert('No Location', 'Location information is not available for this activity.');
+      }
+    } catch (error) {
+      console.error('Error opening maps:', error);
+      Alert.alert('Error', 'Failed to open maps. Please try again.');
+    }
+  };
+
   // Helper functions for filtering sponsors vs vendors
   const getSponsors = () => {
     const sponsorBusinesses = businesses.filter(b => b.business?.isSponsor);
@@ -381,6 +473,70 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
                 <Text style={styles.locationText}>
                   📍 {activity.location.name}
                 </Text>
+                <TouchableOpacity 
+                  onPress={() => handleMapPress(activity)}
+                  style={{ 
+                    backgroundColor: '#F3F4F6', 
+                    borderRadius: 8, 
+                    padding: 15, 
+                    marginTop: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 120
+                  }}
+                  activeOpacity={0.8}
+                >
+                  {activity.latitude && activity.longitude ? (
+                    // Real Interactive Map
+                    <View style={{ 
+                      position: 'relative',
+                      height: 100,
+                      width: '100%'
+                    }}>
+                      <MapView
+                        style={{ 
+                          height: 100, 
+                          width: '100%',
+                          borderRadius: 8
+                        }}
+                        initialRegion={{
+                          latitude: activity.latitude,
+                          longitude: activity.longitude,
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }}
+                        scrollEnabled={false}
+                        zoomEnabled={false}
+                        pitchEnabled={false}
+                        rotateEnabled={false}
+                      >
+                        <Marker
+                          coordinate={{
+                            latitude: activity.latitude,
+                            longitude: activity.longitude,
+                          }}
+                          title={activity.title}
+                          description={activity.location?.name}
+                          pinColor="#007AFF"
+                          tracksViewChanges={false}
+                        />
+                      </MapView>
+                    </View>
+                  ) : (
+                    // Placeholder View
+                    <View style={{ 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      height: 100,
+                      width: '100%'
+                    }}>
+                      <Text style={{ fontSize: 32, marginBottom: 8 }}>🗺️</Text>
+                      <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 }}>
+                        {activity.location_address ? 'Tap to open in Maps' : 'Map view coming soon'}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             )}
 
@@ -389,7 +545,24 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ visible, activity, event,
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>⏱️ Duration</Text>
                 <Text style={styles.infoValue}>
-                  {Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60))} minutes
+                  {(() => {
+                    const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+                    const hours = Math.floor(durationMinutes / 60);
+                    const minutes = durationMinutes % 60;
+                    
+                    if (hours === 0) {
+                      return `${minutes} minutes`;
+                    } else if (minutes === 0) {
+                      return `${hours} hour${hours > 1 ? 's' : ''}`;
+                    } else {
+                      const decimalHours = durationMinutes / 60;
+                      if (decimalHours % 1 === 0) {
+                        return `${decimalHours} hour${decimalHours > 1 ? 's' : ''}`;
+                      } else {
+                        return `${hours}.${Math.round(minutes / 6)} hour${hours > 1 || (hours === 1 && minutes > 0) ? 's' : ''}`;
+                      }
+                    }
+                  })()}
                 </Text>
               </View>
               <View style={styles.infoRow}>

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-// import { NotificationService } from './notificationService'; // Temporarily disabled
+import { NotificationService } from './notificationService';
 // Real-time service for live chat updates
 // Uses Supabase Realtime via REST API polling for Expo Go compatibility
 
@@ -282,16 +282,16 @@ export class RealTimeService {
         title = thread.name || 'Group Chat';
       }
 
-      // Create notification (temporarily disabled)
-      // await NotificationService.createChatNotification({
-      //   title,
-      //   body: message.content,
-      //   data: {
-      //     threadId,
-      //     messageId: message.id,
-      //     type: 'chat_message'
-      //   }
-      // });
+      // Create notification
+      await NotificationService.createChatNotification({
+        title,
+        body: message.content,
+        data: {
+          threadId,
+          messageId: message.id,
+          type: 'chat_message'
+        }
+      });
     } catch (error) {
       console.error('Error creating chat notification:', error);
     }

@@ -17,7 +17,7 @@ export interface UserProfile {
   organizationAffiliation?: string;
   titlePosition?: string;
   points: number;
-  avatarUrl?: string;
+  avatar_url?: string;
   professionalCategories: ProfessionalCategory[];
   communityInterests: CommunityInterest[];
   eventHistory: EventAttendance[];
@@ -57,7 +57,7 @@ export interface ProfileUpdateData {
   bio?: string;
   organizationAffiliation?: string;
   titlePosition?: string;
-  avatarUrl?: string;
+  avatar_url?: string;
 }
 
 export interface ProfileCompleteness {
@@ -65,6 +65,8 @@ export interface ProfileCompleteness {
   missingFields: string[];
   completionPercentage: number;
 }
+
+import { supabase } from '../lib/supabase';
 
 export class ProfileService {
   private static readonly SUPABASE_URL = 'https://zqjziejllixifpwzbdnf.supabase.co';
@@ -118,7 +120,7 @@ export class ProfileService {
         organizationAffiliation: user.organization_affiliation,
         titlePosition: user.title_position,
         points: user.points || 0,
-        avatarUrl: user.avatar_url,
+        avatar_url: user.avatar_url,
         professionalCategories,
         communityInterests,
         eventHistory,
@@ -151,7 +153,7 @@ export class ProfileService {
       if (data.bio !== undefined) dbData.bio = data.bio;
       if (data.organizationAffiliation !== undefined) dbData.organization_affiliation = data.organizationAffiliation;
       if (data.titlePosition !== undefined) dbData.title_position = data.titlePosition;
-      if (data.avatarUrl !== undefined) dbData.avatar_url = data.avatarUrl;
+      if (data.avatar_url !== undefined) dbData.avatar_url = data.avatar_url;
 
       console.log('Sending PATCH request with data:', dbData);
       
@@ -421,42 +423,51 @@ export class ProfileService {
   }
 
   /**
-   * Upload profile image to Supabase Storage
+   * Upload profile image to Supabase Storage using the official Supabase client
+   * Based on official Supabase documentation for React Native
    */
   static async uploadProfileImage(userId: string, imageUri: string): Promise<string> {
     try {
-      console.log('Uploading profile image:', { userId, imageUri });
+      console.log('📸 Starting profile image upload:', { userId, imageUri });
 
-      // Convert image to blob
+      // Convert image to ArrayBuffer (required for React Native)
       const response = await fetch(imageUri);
-      const blob = await response.blob();
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      console.log('📸 Image converted to ArrayBuffer, size:', arrayBuffer.byteLength);
 
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', blob, `profile-${userId}-${Date.now()}.jpg`);
+      // Generate unique filename with proper extension
+      const timestamp = Date.now();
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() ?? 'jpeg';
+      const filename = `profile-${userId}-${timestamp}.${fileExt}`;
+      console.log('📸 Generated filename:', filename);
 
-      // Upload to Supabase Storage
-      const uploadResponse = await fetch(
-        `${this.SUPABASE_URL}/storage/v1/object/profile-images/profile-${userId}-${Date.now()}.jpg`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-          },
-          body: formData,
-        }
-      );
+      // Use Supabase client for upload (official method)
+      const { data, error } = await supabase.storage
+        .from('profile-images')
+        .upload(filename, arrayBuffer, {
+          contentType: `image/${fileExt}`,
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        throw new Error(`Failed to upload image: ${uploadResponse.status} ${errorText}`);
+      if (error) {
+        console.error('📸 Supabase upload error:', error);
+        throw new Error(`Failed to upload image: ${error.message}`);
       }
 
-      const imageUrl = `${this.SUPABASE_URL}/storage/v1/object/public/profile-images/profile-${userId}-${Date.now()}.jpg`;
-      console.log('✅ Uploaded profile image:', imageUrl);
+      // Get public URL
+      const { data: publicData } = supabase.storage
+        .from('profile-images')
+        .getPublicUrl(filename);
+
+      const imageUrl = publicData.publicUrl;
+      console.log('✅ Successfully uploaded profile image:', imageUrl);
       return imageUrl;
     } catch (error) {
-      console.error('Error uploading profile image:', error);
+      console.error('❌ Error uploading profile image:', error);
       throw error;
     }
   }

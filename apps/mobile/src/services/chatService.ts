@@ -345,6 +345,7 @@ export class ChatService {
     // Create new thread
     const threadData = {
       type: 'dm',
+      thread_type: 'dm', // Explicitly set thread_type for proper filtering
       is_private: true,
       allow_member_invites: false,
       allow_file_uploads: true,
@@ -641,7 +642,7 @@ export class ChatService {
     if (thread.type === 'dm') {
       try {
         const membersResponse = await fetch(
-          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${thread.id}&user_id=neq.${userId}&select=user_id,users!inner(id,name,first_name,last_name,email,avatar_url)`,
+          `${this.SUPABASE_URL}/rest/v1/chat_memberships?thread_id=eq.${thread.id}&user_id=neq.${userId}&select=user_id,users!inner(id,name,first_name,last_name,email,avatar_url,updated_at)`,
           { headers: this.getHeaders() }
         );
         if (membersResponse.ok) {

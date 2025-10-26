@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "620605317803",
+    "project_id": "pbr-app-staging",
+    "storage_bucket": "pbr-app-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:620605317803:android:0f4e8404376cfba19d0dee",
+        "android_client_info": {
+          "package_name": "com.thinkmodalabs.pbrmvp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "620605317803-pkcrjjgqfsu08q9fgpuj1m606qpgc6ua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHmTwqUmzKR1O2S57PlRcEyqJs20owuCE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "620605317803-pkcrjjgqfsu08q9fgpuj1m606qpgc6ua.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
