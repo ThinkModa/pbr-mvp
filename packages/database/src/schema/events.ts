@@ -83,14 +83,15 @@ export const activities = pgTable('activities', {
   description: text('description'),
   startTime: timestamp('start_time').notNull(),
   endTime: timestamp('end_time').notNull(),
+  locationName: text('location_name'), // Custom location name (e.g., "Main Conference Room")
   location: jsonb('location').$type<{
-    name: string;
     address?: string;
     coordinates?: {
       lat: number;
       lng: number;
     };
-  }>(),
+    placeId?: string;
+  }>(), // Google Places data (address, coordinates, placeId)
   maxCapacity: integer('max_capacity'),
   currentRsvps: integer('current_rsvps').notNull().default(0),
   isRequired: boolean('is_required').notNull().default(false),

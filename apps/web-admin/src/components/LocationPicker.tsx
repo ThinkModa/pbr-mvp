@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { googleMapsLoader } from '../utils/googleMapsLoader';
 
 interface LocationData {
   name: string;
@@ -35,8 +36,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 }) => {
   // Handle both string and object values properly
   const getInitialValue = () => {
-    console.log('🔍 LocationPicker getInitialValue called with:', { value, type: typeof value });
-    
     if (typeof value === 'string') {
       // Check if it's JSON string
       if (value.startsWith('{') || value.startsWith('[')) {
@@ -69,80 +68,84 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
+  const previousValueRef = useRef(value);
 
   // Update input value when value prop changes (for editing existing events)
   useEffect(() => {
-    const newValue = getInitialValue();
-    // Only update if different to avoid cursor jumping
-    if (newValue !== inputValue) {
+    // Only update if the value prop actually changed
+    if (previousValueRef.current !== value) {
+      const newValue = getInitialValue();
       setInputValue(newValue);
+      previousValueRef.current = value;
     }
   }, [value]);
 
-  // Initialize Google Places API
+  // Initialize Google Places API using global loader
   useEffect(() => {
-    if (!GOOGLE_PLACES_API_KEY) {
-      console.warn('Google Places API key not found. Please set REACT_APP_GOOGLE_PLACES_API_KEY in your environment variables.');
-      return;
-    }
-
-    // Load Google Places API script
-    if (!window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_PLACES_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
+    const initializeGoogleMaps = async () => {
+      try {
+        await googleMapsLoader.loadGoogleMaps();
         initializeAutocomplete();
-      };
-      document.head.appendChild(script);
-    } else {
-      initializeAutocomplete();
-    }
+      } catch (error) {
+        console.error('Failed to load Google Maps API:', error);
+      }
+    };
+
+    initializeGoogleMaps();
 
     return () => {
       if (autocompleteRef.current) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+        // Clean up event listeners
+        window.google?.maps?.event?.clearInstanceListeners(autocompleteRef.current);
       }
     };
   }, []);
 
   const initializeAutocomplete = () => {
-    if (!window.google || !inputRef.current) return;
+    if (!window.google || !window.google.maps || !window.google.maps.places || !inputRef.current) {
+      console.warn('Google Maps API not fully loaded yet, skipping autocomplete initialization');
+      return;
+    }
 
-    autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-      types: ['establishment', 'geocode'],
-      fields: ['place_id', 'name', 'formatted_address', 'geometry']
-    });
-
-    autocompleteRef.current.addListener('place_changed', () => {
-      const place = autocompleteRef.current.getPlace();
+    try {
+      console.log('🚀 Initializing Google Places Autocomplete');
       
-      console.log('🗺️ Google Places result:', {
-        name: place.name,
-        formatted_address: place.formatted_address,
-        geometry: place.geometry,
-        hasCoordinates: !!place.geometry?.location
+      // Use the stable legacy Autocomplete API
+      autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
+        types: ['establishment', 'geocode'],
+        fields: ['place_id', 'name', 'formatted_address', 'geometry']
       });
-      
-      if (place.place_id) {
-        const locationData: LocationData = {
-          name: place.name || place.formatted_address,
-          address: place.formatted_address,
-          coordinates: place.geometry?.location ? {
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng()
-          } : undefined,
-          placeId: place.place_id
-        };
-        
-        console.log('📍 Location data being sent:', locationData);
 
-        setInputValue(locationData.address);  // FIXED: Use address not name
-        onChange(locationData);
-        setShowSuggestions(false);
-      }
-    });
+      autocompleteRef.current.addListener('place_changed', () => {
+        const place = autocompleteRef.current.getPlace();
+        
+        console.log('🗺️ Google Places result:', {
+          name: place.name,
+          formatted_address: place.formatted_address,
+          geometry: place.geometry,
+          hasCoordinates: !!place.geometry?.location
+        });
+        
+        if (place.place_id) {
+          const locationData: LocationData = {
+            name: place.name || place.formatted_address,
+            address: place.formatted_address,
+            coordinates: place.geometry?.location ? {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng()
+            } : undefined,
+            placeId: place.place_id
+          };
+          
+          console.log('📍 Location data being sent:', locationData);
+          setInputValue(locationData.address || locationData.name);
+          onChange(locationData);
+          setShowSuggestions(false);
+        }
+      });
+    } catch (error) {
+      console.error('Error initializing Google Places Autocomplete:', error);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

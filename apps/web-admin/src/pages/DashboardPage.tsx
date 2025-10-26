@@ -1049,7 +1049,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onLogout }) =
         endDate: endDateTime.toISOString().split('T')[0],
         endTime: convertTo12Hour(endDateTime.toTimeString().slice(0, 5)),
         locationName: activity.location?.name || '', // Add location name field
-        location: activity.location?.name || '',
+        location: activity.location || { name: '', address: '', coordinates: undefined, placeId: undefined },
         category: 'other', // Default category
         capacity: activity.max_capacity?.toString() || '',
         isRequired: activity.is_required

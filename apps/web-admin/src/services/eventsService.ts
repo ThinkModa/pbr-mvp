@@ -221,9 +221,11 @@ export class EventsService {
         description: string;
         start_time: string;
         end_time: string;
+        locationName?: string;
         location: {
-          name: string;
-          address: string;
+          name?: string;
+          address?: string;
+          formatted_address?: string;
           coordinates?: { lat: number; lng: number };
           placeId?: string;
         };
@@ -288,9 +290,16 @@ export class EventsService {
         start_time: activity.start_time,
         end_time: activity.end_time,
         location: typeof activity.location === 'string' 
-          ? { name: activity.location } 
-          : activity.location,
-        // Removed location_address - this column doesn't exist in activities table
+          ? { 
+              name: activity.locationName || activity.location,
+              address: activity.location 
+            } 
+          : {
+              name: activity.locationName || activity.location?.name || '',
+              address: activity.location?.address || activity.location?.formatted_address || '',
+              coordinates: activity.location?.coordinates,
+              placeId: activity.location?.placeId
+            },
         max_capacity: activity.capacity ? parseInt(activity.capacity.toString()) : undefined,
         is_required: activity.is_required,
       }));
