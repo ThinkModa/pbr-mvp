@@ -43,6 +43,7 @@ const formatFriendlyDateTime = (dateTimeString: string): string => {
 };
 
 const TrackManagement: React.FC<TrackManagementProps> = ({ event, onClose, onEventUpdated }) => {
+  // Track Management component with Exit button functionality
   const [tracks, setTracks] = useState<EventTrack[]>([]);
   const [trackGroups, setTrackGroups] = useState<TrackGroup[]>([]);
   const [availableActivities, setAvailableActivities] = useState<Activity[]>([]);
