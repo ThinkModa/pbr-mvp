@@ -124,7 +124,17 @@ const TrackSelectionModal: React.FC<TrackSelectionModalProps> = ({
       let confirmationMessage = `Are you sure you want to select "${track.name}"?`;
       
       if (trackGroup && trackGroup.is_mutually_exclusive) {
-        confirmationMessage = `You're selecting "${track.name}" from the "${trackGroup.name}" group. This is a mutually exclusive group, meaning you can only select one track from this group. Are you sure?`;
+        // Get all tracks in the same mutually exclusive group
+        const tracksInSameGroup = tracks.filter(t => 
+          t.track_group_id === trackGroup.id && t.id !== track.id
+        );
+        
+        if (tracksInSameGroup.length > 0) {
+          const otherTrackNames = tracksInSameGroup.map(t => t.name).join(', ');
+          confirmationMessage = `You're selecting "${track.name}" from the "${trackGroup.name}" group. This is a mutually exclusive group, so selecting this track will hide activities from: ${otherTrackNames}. Are you sure?`;
+        } else {
+          confirmationMessage = `You're selecting "${track.name}" from the "${trackGroup.name}" group. This is a mutually exclusive group, meaning you can only select one track from this group. Are you sure?`;
+        }
       }
       
       // Check if track is at capacity

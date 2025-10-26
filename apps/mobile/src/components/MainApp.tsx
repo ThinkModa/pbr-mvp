@@ -202,50 +202,8 @@ const EventsScreen: React.FC<{
     loadEvents();
   }, []);
 
-  // Re-filter activities when modal view changes to 'event' or when selected track changes
-  useEffect(() => {
-    if (modalView === 'event' && selectedEvent && userSelectedTracks[selectedEvent.id]) {
-      console.log('🔄 Modal view changed to event, re-filtering activities...');
-      const filterActivities = async () => {
-        // Get track activities for the selected track
-        const selectedTrackId = userSelectedTracks[selectedEvent.id];
-        try {
-          const trackActivities = await TrackService.getTrackActivities(selectedTrackId);
-          console.log('📊 Track activities for selected track:', trackActivities.length);
-          
-          // Get all event activities
-          const allActivities = selectedEvent.activities || [];
-          console.log('📊 All event activities:', allActivities.length);
-          
-          // Filter to show only track activities + general activities (no track_id)
-          const filtered = allActivities.filter(activity => {
-            // Show general activities (no track_id assigned)
-            if (!activity.track_id) {
-              console.log('📊 Including general activity:', activity.title);
-              return true;
-            }
-            // Show activities that are in the selected track's activities
-            const isInSelectedTrack = trackActivities.some(trackActivity => trackActivity.id === activity.id);
-            if (isInSelectedTrack) {
-              console.log('📊 Including track activity:', activity.title);
-              return true;
-            }
-            // Hide activities for other tracks
-            console.log('📊 Hiding activity for other track:', activity.title);
-            return false;
-          });
-          
-          console.log(`📊 Hybrid filtering result:`, filtered.length, 'out of', allActivities.length);
-          setFilteredActivities(filtered);
-        } catch (error) {
-          console.error('Error filtering activities by track:', error);
-          // Fallback to showing all activities
-          setFilteredActivities(selectedEvent.activities || []);
-        }
-      };
-      filterActivities();
-    }
-  }, [modalView, selectedEvent, userSelectedTracks]);
+  // Note: Removed conflicting useEffect that was interfering with getFilteredActivities
+  // The filtering is now handled exclusively by getFilteredActivities function
 
         const loadEvents = async () => {
           try {
@@ -318,19 +276,16 @@ const EventsScreen: React.FC<{
     setModalVisible(true);
     
     // Load user's selected track for this event first
-    await loadUserSelectedTrack(event.id);
+    const selectedTrackId = await loadUserSelectedTrack(event.id);
     
     // Then filter activities based on the selected track
     console.log('🎯 Event activities:', event.activities?.length || 0);
     console.log('🎯 First activity sample:', event.activities?.[0]);
+    console.log('🎯 Selected track ID:', selectedTrackId);
     
-    // Debug: Show all track_id values in activities
+    // Debug: Show activity count
     if (event.activities) {
-      const trackIds = event.activities.map(activity => activity.track_id).filter(Boolean);
-      const uniqueTrackIds = [...new Set(trackIds)];
-      console.log('🎯 All track_id values in activities:', uniqueTrackIds);
-      console.log('🎯 Activities with track_id:', trackIds.length);
-      console.log('🎯 Activities without track_id:', event.activities.length - trackIds.length);
+      console.log('🎯 Total activities:', event.activities.length);
     }
     
     const filtered = await getFilteredActivities(event.activities || [], event.id);
@@ -482,6 +437,11 @@ const EventsScreen: React.FC<{
       const trackName = await getTrackName(trackId);
       setSelectedTrackName(trackName);
       
+      // Filter activities based on the newly selected track
+      console.log('🔄 Re-filtering activities after track selection...');
+      const filtered = await getFilteredActivities(selectedEvent.activities || [], selectedEvent.id);
+      setFilteredActivities(filtered);
+      
       // Switch back to event view
       setModalView('event');
       
@@ -500,8 +460,8 @@ const EventsScreen: React.FC<{
   };
 
   // Load user's selected track for an event
-  const loadUserSelectedTrack = async (eventId: string) => {
-    if (!user) return;
+  const loadUserSelectedTrack = async (eventId: string): Promise<string | null> => {
+    if (!user) return null;
     
     try {
       const rsvp = await RSVPService.getUserEventRSVP(eventId, user.id);
@@ -513,13 +473,16 @@ const EventsScreen: React.FC<{
         
         // Set track name (simplified - don't fetch from database)
         setSelectedTrackName(`Track ${rsvp.track_id.slice(-4)}`);
+        return rsvp.track_id;
       } else {
         // No track selected
         setSelectedTrackName('');
+        return null;
       }
     } catch (error) {
       console.error('Error loading user selected track:', error);
       setSelectedTrackName('');
+      return null;
     }
   };
 
@@ -536,7 +499,7 @@ const EventsScreen: React.FC<{
     }
   };
 
-  // Filter activities by user's selected track (hybrid: track-specific + general activities)
+  // Filter activities by user's selected track with mutual exclusivity enforcement
   const getFilteredActivities = async (activities: any[], eventId: string) => {
     const selectedTrackId = userSelectedTracks[eventId];
     if (!selectedTrackId) {
@@ -546,34 +509,78 @@ const EventsScreen: React.FC<{
     }
     
     try {
-      console.log('📊 Starting hybrid filtering for track:', selectedTrackId);
+      console.log('📊 Starting track-based filtering for track:', selectedTrackId);
       console.log('📊 Total activities to filter:', activities.length);
       
-      // Debug: Show all track_id values in activities
-      const trackIds = activities.map(activity => activity.track_id).filter(Boolean);
-      const uniqueTrackIds = [...new Set(trackIds)];
-      console.log('📊 All track_id values in activities:', uniqueTrackIds);
-      console.log('📊 Activities with track_id:', trackIds.length);
-      console.log('📊 Activities without track_id:', activities.length - trackIds.length);
+      // Get track groups and track information for mutual exclusivity logic
+      const trackGroups = await TrackService.getTrackGroups(eventId);
+      const selectedTrack = await TrackService.getTrack(selectedTrackId);
       
-      // Hybrid filtering: show track-specific activities + general activities (no track_id)
+      if (!selectedTrack) {
+        console.log('📊 Selected track not found, showing all activities');
+        return activities;
+      }
+      
+      // Find which track group the selected track belongs to
+      const selectedTrackGroup = trackGroups.find(group => group.id === selectedTrack.track_group_id);
+      
+      console.log('📊 Selected track group:', selectedTrackGroup?.name, 'Mutually exclusive:', selectedTrackGroup?.is_mutually_exclusive);
+      
+      // Get all tracks in the same group as the selected track (if it's mutually exclusive)
+      let excludedTrackIds: string[] = [];
+      if (selectedTrackGroup && selectedTrackGroup.is_mutually_exclusive) {
+        const allTracks = await TrackService.getEventTracks(eventId);
+        const tracksInSameGroup = allTracks.filter(track => 
+          track.track_group_id === selectedTrackGroup.id && track.id !== selectedTrackId
+        );
+        excludedTrackIds = tracksInSameGroup.map(track => track.id);
+        console.log('📊 Excluding tracks from same mutually exclusive group:', excludedTrackIds);
+      }
+      
+      // Get activities for the selected track
+      const selectedTrackActivities = await TrackService.getTrackActivities(selectedTrackId);
+      const selectedTrackActivityIds = new Set(selectedTrackActivities.map(activity => activity.id));
+      
+      // Get activities for excluded tracks (to exclude them)
+      const excludedActivityIds = new Set<string>();
+      for (const excludedTrackId of excludedTrackIds) {
+        try {
+          const excludedTrackActivities = await TrackService.getTrackActivities(excludedTrackId);
+          excludedTrackActivities.forEach(activity => excludedActivityIds.add(activity.id));
+        } catch (error) {
+          console.error(`Error loading activities for excluded track ${excludedTrackId}:`, error);
+        }
+      }
+      
+      console.log('📊 Selected track activities:', selectedTrackActivityIds.size);
+      console.log('📊 Excluded activities:', excludedActivityIds.size);
+      
+      // Filter activities based on track selection and mutual exclusivity
       const filteredActivities = activities.filter(activity => {
-        // Show general activities (no track_id assigned)
-        if (!activity.track_id) {
+        // Show general activities (not assigned to any track)
+        if (!selectedTrackActivityIds.has(activity.id) && !excludedActivityIds.has(activity.id)) {
           console.log('📊 Including general activity:', activity.title);
           return true;
         }
+        
         // Show activities for the selected track
-        if (activity.track_id === selectedTrackId) {
+        if (selectedTrackActivityIds.has(activity.id)) {
           console.log('📊 Including track-specific activity:', activity.title, 'for track:', selectedTrackId);
           return true;
         }
-        // Hide activities for other tracks
-        console.log('📊 Hiding activity for other track:', activity.title, 'track_id:', activity.track_id);
-        return false;
+        
+        // Hide activities from excluded tracks (same mutually exclusive group)
+        if (excludedActivityIds.has(activity.id)) {
+          console.log('📊 Hiding activity from excluded track (mutually exclusive):', activity.title);
+          return false;
+        }
+        
+        // For non-mutually exclusive groups, show all activities
+        console.log('📊 Including activity from other track (not mutually exclusive):', activity.title);
+        return true;
       });
       
-      console.log(`📊 Hybrid filtering result for track ${selectedTrackId}:`, filteredActivities.length, 'out of', activities.length);
+      console.log(`📊 Track-based filtering result for track ${selectedTrackId}:`, filteredActivities.length, 'out of', activities.length);
       return filteredActivities;
     } catch (error) {
       console.error('Error filtering activities by track:', error);
