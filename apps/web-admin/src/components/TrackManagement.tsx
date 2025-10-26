@@ -373,6 +373,21 @@ const TrackManagement: React.FC<TrackManagementProps> = ({ event, onClose, onEve
             >
               Create Track Group
             </button>
+            <button
+              onClick={onClose}
+              style={{
+                backgroundColor: '#6B7280',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+              }}
+            >
+              Exit
+            </button>
           </div>
         </div>
       </div>
@@ -695,15 +710,29 @@ const TrackManagement: React.FC<TrackManagementProps> = ({ event, onClose, onEve
         }}>
           <div style={{
             backgroundColor: 'white',
-            padding: '24px',
             borderRadius: '8px',
             width: '800px',
             maxHeight: '80vh',
-            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>
-              Manage Activities for: {selectedTrack.name}
-            </h3>
+            {/* Header */}
+            <div style={{
+              padding: '24px 24px 0 24px',
+              borderBottom: '1px solid #E5E7EB',
+              flexShrink: 0,
+            }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>
+                Manage Activities for: {selectedTrack.name}
+              </h3>
+            </div>
+
+            {/* Scrollable Content */}
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: '24px',
+            }}>
 
             {/* Assigned Activities */}
             <div style={{ marginBottom: '24px' }}>
@@ -812,21 +841,32 @@ const TrackManagement: React.FC<TrackManagementProps> = ({ event, onClose, onEve
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button
-                onClick={() => setSelectedTrack(null)}
-                style={{
-                  backgroundColor: '#6B7280',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
+            </div>
+
+            {/* Sticky Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #E5E7EB',
+              backgroundColor: '#F9FAFB',
+              flexShrink: 0,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setSelectedTrack(null)}
+                  style={{
+                    backgroundColor: '#6B7280',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
