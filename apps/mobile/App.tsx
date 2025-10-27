@@ -18,6 +18,48 @@ import { AuthProvider, useAuth } from './src/contexts/SupabaseAuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import MainApp from './src/components/MainApp';
 import CacheService from './src/services/cacheService';
+import * as TaskManager from 'expo-task-manager';
+import * as Notifications from 'expo-notifications';
+
+// Background Notification Task Configuration
+const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
+
+// Define the background notification task (MUST be in module scope, early in app)
+TaskManager.defineTask<Notifications.NotificationTaskPayload>(BACKGROUND_NOTIFICATION_TASK, async ({ data, error, executionInfo }) => {
+  if (error) {
+    console.error('❌ Background notification error:', error);
+    return;
+  }
+
+  console.log('📱 Received background notification task');
+  console.log('📱 Execution info:', executionInfo);
+
+  // Check if this is a user action (tap) or notification data
+  const isNotificationResponse = 'actionIdentifier' in data;
+
+  if (isNotificationResponse) {
+    // User tapped notification while app was closed/backgrounded
+    console.log('👆 User tapped notification:', data.actionIdentifier);
+    console.log('👆 Notification data:', (data as any).notification);
+    
+    // Handle navigation to specific screen based on notification data
+    const notificationData = (data as any).notification?.request?.content?.data;
+    if (notificationData) {
+      console.log('🧭 Navigation data:', notificationData);
+      // You can store this data and handle navigation when app opens
+      // For now, just log it - navigation will be handled in MainApp
+    }
+  } else {
+    // Background notification received (app was closed/backgrounded)
+    console.log('🔔 Background notification data:', data);
+    
+    // Process notification data, update local storage, etc.
+    // This runs even when the app is completely closed
+    if (data && typeof data === 'object') {
+      console.log('📝 Processing background notification:', data);
+    }
+  }
+});
 
 // Error Boundary Component
 interface ErrorBoundaryState {
@@ -70,17 +112,22 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 const AppContent: React.FC = () => {
   const { user, loading, isConnected, connectionError, testConnection } = useAuth();
 
-  // Check for corrupted cache on app start
+  // Check for corrupted cache on app start and register background notification task
   useEffect(() => {
-    const checkCache = async () => {
+    const initializeApp = async () => {
       try {
+        // Clear corrupted cache
         await CacheService.clearCorruptedCache();
+        
+        // Register background notification task
+        await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+        console.log('✅ Background notification task registered successfully');
       } catch (error) {
-        console.error('Error checking cache on app start:', error);
+        console.error('❌ Error during app initialization:', error);
       }
     };
     
-    checkCache();
+    initializeApp();
   }, []);
 
   // Handle connection errors

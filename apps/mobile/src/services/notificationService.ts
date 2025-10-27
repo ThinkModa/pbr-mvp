@@ -129,18 +129,8 @@ export class NotificationService {
    */
   static async createChatNotification(notification: ChatNotificationData): Promise<void> {
     try {
-      // Send local notification
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: notification.title,
-          body: notification.body,
-          data: notification.data,
-          sound: 'default',
-        },
-        trigger: null, // Show immediately
-      });
-
-      // Send push notification to other users in the thread
+      // Only send server-side push notifications (works when app is closed/backgrounded)
+      // Removed local notification as it only works when app is open
       await this.sendPushNotificationToThread(notification);
 
     } catch (error) {
@@ -153,18 +143,8 @@ export class NotificationService {
    */
   static async createEventNotification(notification: EventNotificationData): Promise<void> {
     try {
-      // Send local notification
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: notification.title,
-          body: notification.body,
-          data: notification.data,
-          sound: 'default',
-        },
-        trigger: null, // Show immediately
-      });
-
-      // Send push notification to event attendees
+      // Only send server-side push notifications (works when app is closed/backgrounded)
+      // Removed local notification as it only works when app is open
       await this.sendPushNotificationToEventAttendees(notification);
 
     } catch (error) {

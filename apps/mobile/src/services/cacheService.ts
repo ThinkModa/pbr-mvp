@@ -1,4 +1,4 @@
-// import { MMKV } from 'react-native-mmkv'; // Commented out for development builds
+import { MMKV } from 'react-native-mmkv';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Cache configuration
@@ -14,33 +14,25 @@ const CACHE_KEYS = {
   PROFILE_INTERESTS: 'profile_interests_cache',
 } as const;
 
-// Initialize storage with AsyncStorage for development builds
+// Initialize storage with MMKV for production performance
 let storage: any;
 try {
-  // const { MMKV } = require('react-native-mmkv'); // Commented out for development builds
-  // storage = new MMKV({
-  //   id: 'pbr-cache',
-  //   encryptionKey: 'pbr-secure-cache-key-2024'
-  // });
-  // console.log('✅ MMKV initialized successfully');
-  
-  // Use AsyncStorage for development builds
-  storage = {
-    set: (key: string, value: string) => AsyncStorage.setItem(key, value),
-    getString: (key: string) => AsyncStorage.getItem(key),
-    delete: (key: string) => AsyncStorage.removeItem(key),
-    getAllKeys: () => AsyncStorage.getAllKeys(),
-  };
-  console.log('✅ AsyncStorage initialized for development build');
+  const { MMKV } = require('react-native-mmkv');
+  storage = new MMKV({
+    id: 'pbr-cache',
+    encryptionKey: 'pbr-secure-cache-key-2024'
+  });
+  console.log('✅ MMKV initialized successfully');
 } catch (error) {
-  console.warn('⚠️ Storage initialization failed:', error);
-  // Fallback to AsyncStorage if anything fails
+  console.warn('⚠️ MMKV initialization failed, falling back to AsyncStorage:', error);
+  // Fallback to AsyncStorage if MMKV fails
   storage = {
     set: (key: string, value: string) => AsyncStorage.setItem(key, value),
     getString: (key: string) => AsyncStorage.getItem(key),
     delete: (key: string) => AsyncStorage.removeItem(key),
     getAllKeys: () => AsyncStorage.getAllKeys(),
   };
+  console.log('✅ AsyncStorage fallback initialized');
 }
 
 interface CacheItem<T> {

@@ -1,0 +1,256 @@
+{
+  "timestamp": "2025-10-26T06:19:29.530Z",
+  "event": {
+    "id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+    "title": "Know Us: Atlanta 2025",
+    "description": "A three-day community, culture, and impact summit that brings you closer - to place, to purpose, and to the people shaping what’s next.",
+    "slug": "know-us--atlanta-2025",
+    "status": "published",
+    "organization_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "start_time": "2025-11-07T15:00:00",
+    "end_time": "2025-11-10T15:00:00",
+    "timezone": "UTC",
+    "location": {
+      "name": "Atlanta",
+      "address": "Atlanta, GA, USA",
+      "placeId": "ChIJjQmTaV0E9YgRC2MLmS_e_mY",
+      "coordinates": {
+        "lat": 33.7501275,
+        "lng": -84.3885209
+      }
+    },
+    "max_capacity": null,
+    "current_rsvps": 0,
+    "is_free": true,
+    "price": null,
+    "cover_image_url": "",
+    "gallery_urls": [],
+    "allow_waitlist": true,
+    "require_approval": false,
+    "is_public": true,
+    "tags": [],
+    "metadata": {},
+    "created_at": "2025-10-24T00:08:46.832227",
+    "updated_at": "2025-10-26T06:07:51.351",
+    "show_capacity": true,
+    "show_price": false,
+    "show_attendee_count": true,
+    "has_tracks": true
+  },
+  "activities": [
+    {
+      "id": "572ae563-1876-4a55-b0ed-599003a92864",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Hear Us: Community & Culture Conversation",
+      "description": "Here directly from community members, stakeholders, artists, activists, and leaders who are shaping Atlanta one action at a time. ",
+      "start_time": "2025-11-07T18:00:00",
+      "end_time": "2025-11-12T21:00:00",
+      "location": {
+        "name": "One Contemporary Gallery",
+        "address": "One Contemporary Gallery"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "90cb4b1d-b8d5-46fe-b5e3-70de79a48026",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Martin Luther King Jr. National Park Visit",
+      "description": "Come experience the historic site where Martin Luther King Jr. is laid to rest and learn more about how he transformed the history of America as we all know it today. ",
+      "start_time": "2025-11-07T15:30:00",
+      "end_time": "2025-11-07T17:00:00",
+      "location": {
+        "name": "Martin Luther King, Jr. National Historical Park",
+        "address": "Martin Luther King, Jr. National Historical Park"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "0fc9e6b8-4086-468e-9b9c-0f7157181b3d",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Know Us Tribe Breakfast & Refresh",
+      "description": "Join us for a morning breakfast to get energized for a day of community culture and experiences. ",
+      "start_time": "2025-11-08T08:00:00",
+      "end_time": "2025-11-08T09:00:00",
+      "location": {
+        "name": "Origin Atlanta, a Wyndham Hotel",
+        "address": "110 Mitchell St SW, Atlanta, GA 30303, USA",
+        "placeId": "ChIJEWRKvh0D9YgRWNIsHem4pU0",
+        "coordinates": {
+          "lat": 33.7499887,
+          "lng": -84.3917077
+        }
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "98805beb-2136-44e0-a103-50fb448c7813",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Morning Movement - Pilates",
+      "description": "Get moving this morning with a Pilates session for the culture. ",
+      "start_time": "2025-11-08T08:30:00",
+      "end_time": "2025-11-08T09:30:00",
+      "location": {
+        "name": "KKRU Pilates Studio & Wellness",
+        "address": "KKRU Pilates Studio & Wellness"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "ef851a6a-63cd-4a6a-ba1c-beafa933d481",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Coffee and Refreshments for the Culture.\" ",
+      "description": "After some morning movement, come have a fresh coffee or tea to get your brain stimulated and further grow your bonds in your tribe. ",
+      "start_time": "2025-11-08T09:30:00",
+      "end_time": "2025-11-08T10:00:00",
+      "location": {
+        "name": "Portrait Coffee",
+        "address": "Portrait Coffee"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "cbf9f849-18a3-40d5-a0f9-2502c46eae71",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Morning Tea and Revitalization",
+      "description": "Stimulate your mind before activating your body with a refreshing tea in the community. ",
+      "start_time": "2025-11-08T08:30:00",
+      "end_time": "2025-11-08T09:30:00",
+      "location": {
+        "name": "348 Auburn Ave NE",
+        "address": "348 Auburn Ave NE"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "018e61a3-0ab6-405e-878c-9ba353472af5",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Historic BeltLine Walking Tour",
+      "description": "Join us on the West Side for a historic walking tour along the BeltLine, learning about its development, impact, and future state. ",
+      "start_time": "2025-11-08T10:30:00",
+      "end_time": "2025-11-08T12:00:00",
+      "location": {
+        "name": "Beltline Bridge @ Ponce City Market",
+        "address": "Beltline Bridge @ Ponce City Market"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "8999733d-945a-4c0c-ac1d-839dcbda5d9c",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "Food and Housing Justice Conversation",
+      "description": "Learn about the state of food and housing in Atlanta. Learn what they're doing to solve for the issues that persist, and how we can turn it into a national model. ",
+      "start_time": "2025-11-08T10:30:00",
+      "end_time": "2025-11-08T12:00:00",
+      "location": {
+        "name": "Goodr Community Market on Edgewood",
+        "address": "Goodr Community Market on Edgewood"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    },
+    {
+      "id": "da706f55-e172-4373-95a2-39a52a8eaa86",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "title": "The Power Behind the Hustle",
+      "description": "Learn what it takes to hustle and grow your business in Atlanta and beyond. Hear from real entrepreneurs and experience them as they showcase their businesses. ",
+      "start_time": "2025-11-08T13:00:00",
+      "end_time": "2025-11-08T15:00:00",
+      "location": {
+        "name": "Visa Inc. Atlanta Office",
+        "address": "Visa Inc. Atlanta Office"
+      },
+      "max_capacity": null,
+      "current_rsvps": 0,
+      "is_required": false,
+      "order": 0,
+      "created_at": "2025-10-26T06:07:51.64867",
+      "updated_at": "2025-10-26T06:07:51.64867",
+      "category_id": null
+    }
+  ],
+  "tracks": [
+    {
+      "id": "fd144cba-77e5-4cdf-9faf-7995092ccfa0",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "name": "East Side Track",
+      "description": null,
+      "max_capacity": null,
+      "display_order": 0,
+      "is_active": true,
+      "created_at": "2025-10-24T05:43:25.489429",
+      "updated_at": "2025-10-24T05:43:25.489429",
+      "track_group_id": "d2dc006b-9dcc-4452-b7b4-5968d0f483d2"
+    },
+    {
+      "id": "59402656-d709-4c85-954c-e6f692afad0c",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "name": "West Side Track",
+      "description": "Explore the west side of Atlanta on this intentionally curated track. ",
+      "max_capacity": null,
+      "display_order": 0,
+      "is_active": true,
+      "created_at": "2025-10-24T03:17:27.952698",
+      "updated_at": "2025-10-24T05:43:31.489",
+      "track_group_id": "d2dc006b-9dcc-4452-b7b4-5968d0f483d2"
+    }
+  ],
+  "trackGroups": [
+    {
+      "id": "d2dc006b-9dcc-4452-b7b4-5968d0f483d2",
+      "event_id": "840b8aac-424a-4fd0-90b8-9985840d26f8",
+      "name": "Hear Us Atlanta Tracks",
+      "description": null,
+      "is_mutually_exclusive": true,
+      "created_at": "2025-10-24T15:13:14.683296+00:00",
+      "updated_at": "2025-10-24T15:13:14.683296+00:00"
+    }
+  ],
+  "trackActivities": []
+}
