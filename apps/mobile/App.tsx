@@ -18,48 +18,59 @@ import { AuthProvider, useAuth } from './src/contexts/SupabaseAuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import MainApp from './src/components/MainApp';
 import CacheService from './src/services/cacheService';
-import * as TaskManager from 'expo-task-manager';
+// Conditionally import TaskManager (not available in Expo Go)
+let TaskManager: any = null;
+try {
+  TaskManager = require('expo-task-manager');
+} catch (error) {
+  console.log('⚠️ TaskManager not available in development environment');
+}
+
 import * as Notifications from 'expo-notifications';
 
 // Background Notification Task Configuration
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
 
 // Define the background notification task (MUST be in module scope, early in app)
-TaskManager.defineTask<Notifications.NotificationTaskPayload>(BACKGROUND_NOTIFICATION_TASK, async ({ data, error, executionInfo }) => {
-  if (error) {
-    console.error('❌ Background notification error:', error);
-    return;
-  }
-
-  console.log('📱 Received background notification task');
-  console.log('📱 Execution info:', executionInfo);
-
-  // Check if this is a user action (tap) or notification data
-  const isNotificationResponse = 'actionIdentifier' in data;
-
-  if (isNotificationResponse) {
-    // User tapped notification while app was closed/backgrounded
-    console.log('👆 User tapped notification:', data.actionIdentifier);
-    console.log('👆 Notification data:', (data as any).notification);
-    
-    // Handle navigation to specific screen based on notification data
-    const notificationData = (data as any).notification?.request?.content?.data;
-    if (notificationData) {
-      console.log('🧭 Navigation data:', notificationData);
-      // You can store this data and handle navigation when app opens
-      // For now, just log it - navigation will be handled in MainApp
+if (TaskManager) {
+  TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error, executionInfo }: any) => {
+    if (error) {
+      console.error('❌ Background notification error:', error);
+      return;
     }
-  } else {
-    // Background notification received (app was closed/backgrounded)
-    console.log('🔔 Background notification data:', data);
-    
-    // Process notification data, update local storage, etc.
-    // This runs even when the app is completely closed
-    if (data && typeof data === 'object') {
-      console.log('📝 Processing background notification:', data);
+
+    console.log('📱 Received background notification task');
+    console.log('📱 Execution info:', executionInfo);
+
+    // Check if this is a user action (tap) or notification data
+    const isNotificationResponse = 'actionIdentifier' in data;
+
+    if (isNotificationResponse) {
+      // User tapped notification while app was closed/backgrounded
+      console.log('👆 User tapped notification:', data.actionIdentifier);
+      console.log('👆 Notification data:', (data as any).notification);
+      
+      // Handle navigation to specific screen based on notification data
+      const notificationData = (data as any).notification?.request?.content?.data;
+      if (notificationData) {
+        console.log('🧭 Navigation data:', notificationData);
+        // You can store this data and handle navigation when app opens
+        // For now, just log it - navigation will be handled in MainApp
+      }
+    } else {
+      // Background notification received (app was closed/backgrounded)
+      console.log('🔔 Background notification data:', data);
+      
+      // Process notification data, update local storage, etc.
+      // This runs even when the app is completely closed
+      if (data && typeof data === 'object') {
+        console.log('📝 Processing background notification:', data);
+      }
     }
-  }
-});
+  });
+} else {
+  console.log('⚠️ TaskManager not available - background notifications will not work in development');
+}
 
 // Error Boundary Component
 interface ErrorBoundaryState {
@@ -119,9 +130,13 @@ const AppContent: React.FC = () => {
         // Clear corrupted cache
         await CacheService.clearCorruptedCache();
         
-        // Register background notification task
-        await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
-        console.log('✅ Background notification task registered successfully');
+        // Register background notification task (only if TaskManager is available)
+        if (TaskManager) {
+          await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+          console.log('✅ Background notification task registered successfully');
+        } else {
+          console.log('⚠️ TaskManager not available - background notifications disabled in development');
+        }
       } catch (error) {
         console.error('❌ Error during app initialization:', error);
       }

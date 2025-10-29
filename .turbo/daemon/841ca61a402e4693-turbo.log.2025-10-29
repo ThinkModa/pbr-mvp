@@ -1,0 +1,241 @@
+2025-10-29T06:17:37.877879Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/.turbo-cookie"), AnchoredSystemPathBuf(".turbo/cookies/1.cookie")}
+2025-10-29T06:17:37.877894Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-10-29T06:19:45.178241Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/App.tsx")}
+2025-10-29T06:19:45.178273Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:20:03.779823Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/App.tsx")}
+2025-10-29T06:20:03.779841Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:21:26.779501Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/App.tsx")}
+2025-10-29T06:21:26.779809Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:21:40.979304Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/App.tsx")}
+2025-10-29T06:21:40.979316Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:21:52.978509Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/App.tsx")}
+2025-10-29T06:21:52.978518Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:21:52.978552Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T06:33:52.082073Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:33:52.082105Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:34:03.579143Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:34:03.579154Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:34:03.579183Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T06:39:17.955401Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:39:17.955427Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:39:46.256521Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:39:46.256859Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:39:54.855310Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:39:54.855869Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:00.855374Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:40:00.855392Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:10.054008Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:40:10.054032Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:13.556916Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:40:13.557991Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:16.755046Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:40:16.755056Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:22.054711Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:40:22.054906Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:43.354640Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:40:43.354649Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:40:54.357256Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:40:54.357267Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:41:43.854331Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:41:43.854348Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:42:09.355815Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:42:09.355827Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:42:57.553548Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx"), AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:42:57.553570Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:42:57.589933Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T06:54:21.649907Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:54:21.649944Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:54:29.750690Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:54:29.750779Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:54:40.150194Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:54:40.150215Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:54:45.449722Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:54:45.449734Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:55:00.149314Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx"), AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:55:00.149355Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:55:00.163530Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T06:57:02.249046Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T06:57:02.249077Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:57:21.248103Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:57:21.248124Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:57:35.348364Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx"), AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T06:57:35.348384Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T06:57:35.383924Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:00:19.247878Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:00:19.247917Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:00:31.549986Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:00:31.550012Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:00:41.447183Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:00:41.447203Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:01:03.049305Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx"), AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:01:03.049677Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:01:03.098538Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:05:04.246085Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:05:04.246133Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:05:08.246326Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:05:08.246354Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:05:16.445667Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:05:16.445725Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:05:36.245013Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:05:36.245023Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:05:36.262159Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:09:06.648320Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:09:06.648383Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:09:20.647765Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:09:20.647777Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:09:25.846880Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:09:25.846890Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:09:38.446515Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:09:38.446527Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:10:05.746867Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:10:05.746878Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:10:05.846585Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:16:20.151251Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:20.151299Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:20.291208Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:20.291216Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:20.291242Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:16:24.647123Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:24.647162Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:29.845807Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:29.845826Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:35.945630Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:35.945648Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:46.544923Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:46.544933Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:51.345718Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:51.345926Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:16:55.944926Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:16:55.944944Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:17:01.045514Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:17:01.045523Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:17:06.544588Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:17:06.544604Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:17:19.945516Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx"), AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:17:19.945534Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:17:20.003276Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:17:20.045393Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:17:20.045402Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:17:20.045422Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:20:43.444789Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:20:43.444835Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:20:55.943268Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:20:55.943278Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:21:06.542970Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:21:06.542999Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:21:06.643939Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:21:06.643953Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:21:06.643988Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:21:21.443789Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:21:21.443797Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:21:21.443823Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:26:28.744087Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:26:28.744395Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:26:36.441359Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:26:36.441376Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:26:45.642357Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:26:45.642509Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:27:05.342520Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:27:05.342556Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:27:05.386271Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:28:41.841511Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:28:41.841597Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:28:48.442257Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:28:48.442395Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:29:06.041784Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx"), AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:29:06.041817Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:29:06.065499Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:33:47.444247Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:33:47.444297Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:33:47.568083Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:33:47.568093Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:33:47.568155Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:33:59.644145Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:33:59.644171Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:34:03.842908Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:34:03.842926Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:34:19.148480Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:34:19.148503Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:34:19.203410Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:40:55.444205Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:40:55.444700Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:41:09.542658Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:41:09.542766Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:41:20.842613Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:41:20.842633Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:41:24.642644Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:41:24.642652Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:41:34.543316Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:41:34.543335Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:07.641660Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:42:07.641797Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:19.541840Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:42:19.541873Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:33.442546Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:42:33.442688Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:47.941341Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:42:47.941352Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:53.041349Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:42:53.041360Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:42:56.741855Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:42:56.741865Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:03.141996Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:43:03.142006Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:10.141951Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:43:10.141959Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:17.442041Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:43:17.442049Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:25.342518Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:43:25.342544Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:30.641475Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:43:30.641510Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:46.341285Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx"), AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:43:46.341321Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:46.457521Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:43:46.457618Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:43:46.457622Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:43:46.457640Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:50:00.643973Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:50:00.644998Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:50:00.787136Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:50:00.787147Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:50:00.787168Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:50:07.240476Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:50:07.240487Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:50:13.739067Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:50:13.739078Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:50:13.739105Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:50:47.840482Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:50:47.840498Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:51:12.239814Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:51:12.239832Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:51:38.640232Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:51:38.640258Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:51:51.939359Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:51:51.939369Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:51:59.539198Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:51:59.539217Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:52:05.039633Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:52:05.039651Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:52:10.440171Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:52:10.440191Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:52:14.539897Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:52:14.539918Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:52:33.538827Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx"), AnchoredSystemPathBuf("apps/mobile/src/contexts/SupabaseAuthContext.tsx")}
+2025-10-29T07:52:33.538892Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:52:33.592283Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-10-29T07:53:38.339384Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:53:38.339452Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:53:55.839905Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:53:55.839914Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:02.541441Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:54:02.541467Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:20.139307Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:54:20.139355Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:25.738951Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:54:25.738961Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:32.338368Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:54:32.338381Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:56.838734Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/mobile/src/components/MainApp.tsx")}
+2025-10-29T07:54:56.838745Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@pbr/mobile"), path: AnchoredSystemPathBuf("apps/mobile") }}))
+2025-10-29T07:54:56.838766Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun

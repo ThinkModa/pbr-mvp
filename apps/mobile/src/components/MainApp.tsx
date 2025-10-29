@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -68,6 +68,7 @@ import TrackSelectionContent from './TrackSelectionContent';
 import AttendeesContent from './AttendeesContent';
 import AvatarComponent from './AvatarComponent';
 import EntityCardOverlay from './EntityCardOverlay';
+import { ConditionalRoleSubscription } from './ConditionalRoleSubscription';
 
 // Events Screen
 const EventsScreen: React.FC<{ 
@@ -2353,14 +2354,18 @@ const EventsScreen: React.FC<{
 
 // Profile Screen
 const ProfileScreen: React.FC = () => {
-  const { user, signOut, updateNotificationPreferences } = useAuth();
+  const { user, signOut, updateNotificationPreferences, refreshUser, updatePassword } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [availableCategories, setAvailableCategories] = useState<any[]>([]);
   const [availableInterests, setAvailableInterests] = useState<any[]>([]);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -2562,6 +2567,44 @@ const ProfileScreen: React.FC = () => {
     setShowInterestsModal(true);
   };
 
+  const handleChangePassword = () => {
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordSave = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const { error } = await updatePassword(newPassword);
+      if (error) {
+        Alert.alert('Error', error.message || 'Failed to update password');
+      } else {
+        Alert.alert('Success', 'Password updated successfully');
+        setShowPasswordModal(false);
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update password');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   const handleImageUpload = async () => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -2712,9 +2755,24 @@ const ProfileScreen: React.FC = () => {
           >
             Profile
           </Text>
-          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-            <Text style={styles.editButtonText}>Edit</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.refreshButton} 
+              onPress={async () => {
+                try {
+                  await refreshUser();
+                  Alert.alert('Success', 'User data refreshed successfully!');
+                } catch (error) {
+                  Alert.alert('Error', 'Failed to refresh user data.');
+                }
+              }}
+            >
+              <Text style={styles.refreshButtonText}>🔄</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+              <Text style={styles.editButtonText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
       <ScrollView contentContainerStyle={styles.profilePageContent}>
@@ -2908,6 +2966,9 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.profilePageActionButton} onPress={handleEditProfile}>
             <Text style={styles.profilePageActionButtonText}>Edit Profile</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.profilePageActionButton} onPress={handleChangePassword}>
+            <Text style={styles.profilePageActionButtonText}>Change Password</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.profileSignOutButton} onPress={handleSignOut}>
             <Text style={styles.profileSignOutButtonText}>Sign Out</Text>
           </TouchableOpacity>
@@ -2988,6 +3049,59 @@ const ProfileScreen: React.FC = () => {
             }
           }}
         />
+      )}
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          presentationStyle="fullScreen"
+        >
+          <SafeAreaView style={styles.profileModalOverlay}>
+            <View style={styles.profileModalHeader}>
+              <TouchableOpacity onPress={() => setShowPasswordModal(false)} style={styles.profileModalCloseButton}>
+                <Text style={styles.profileModalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.profileModalTitle}>Change Password</Text>
+              <TouchableOpacity onPress={handlePasswordSave} style={styles.profileModalSaveButton} disabled={passwordLoading}>
+                <Text style={styles.profileModalSaveButtonText}>{passwordLoading ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <KeyboardAvoidingView 
+              style={styles.profileModalContent}
+              behavior="padding"
+              keyboardVerticalOffset={100}
+            >
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>New Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Confirm Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </Modal>
       )}
       </SafeAreaView>
     // </PerformanceMeasureView>
@@ -5377,17 +5491,73 @@ const ChatThreadScreen: React.FC<{
   );
 };
 
+// Password Change Modal Component - removed (using simplified approach)
+
 // Main App with Navigation
 const MainApp: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser, shouldNavigateToProfile, clearNavigateToProfile, updatePassword } = useAuth();
   const [currentScreen, setCurrentScreen] = useState('events');
   const [navigationHistory, setNavigationHistory] = useState<string[]>(['events']);
   const [chatTabState, setChatTabState] = useState<'notifications' | 'group' | 'direct' | 'announcements'>('notifications');
   const [chatGroupFilterState, setChatGroupFilterState] = useState<'events' | 'users'>('events');
+  const [showPasswordModal, setShowPasswordModal] = useState(false); // State for password modal
+  const [newPassword, setNewPassword] = useState(''); // State for new password
+  const [confirmPassword, setConfirmPassword] = useState(''); // State for confirm password
+  const [passwordLoading, setPasswordLoading] = useState(false); // State for password loading
   
   // Entity card modal state
   const [entityCardModalVisible, setEntityCardModalVisible] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
+
+  // Password change handler
+  const handlePasswordSave = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const { error } = await updatePassword(newPassword);
+      if (error) {
+        Alert.alert('Error', error.message || 'Failed to update password');
+      } else {
+        Alert.alert('Success', 'Password updated successfully', [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowPasswordModal(false);
+              setNewPassword('');
+              setConfirmPassword('');
+            }
+          }
+        ]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update password');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  // Watch for password reset navigation
+  useEffect(() => {
+    if (shouldNavigateToProfile) {
+      console.log('🔐 Password reset navigation triggered - showing password change modal');
+      setShowPasswordModal(true); // Show password change modal directly
+      clearNavigateToProfile(); // Clear the flag
+    }
+  }, [shouldNavigateToProfile, clearNavigateToProfile]);
 
   // Enhanced navigation function that tracks history
   const navigateToScreen = (screen: string) => {
@@ -5485,7 +5655,84 @@ const MainApp: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Role subscription for real-time role updates */}
+      {user && (
+        <ConditionalRoleSubscription
+          userId={user.id}
+          onRoleChange={async (newRole) => {
+            console.log('🔄 Role changed to:', newRole);
+            // Force refresh user data by calling the auth context refresh
+            // This will trigger a re-fetch of user data from the database
+            if (user.role !== newRole) {
+              console.log('🔄 Role mismatch detected, refreshing user data...');
+              try {
+                await refreshUser();
+                console.log('✅ User data refreshed successfully');
+              } catch (error) {
+                console.error('❌ Error refreshing user data:', error);
+              }
+            }
+          }}
+          onError={(error) => {
+            console.error('❌ Role subscription error:', error);
+          }}
+        />
+      )}
+      
       {renderScreen()}
+      
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          presentationStyle="fullScreen"
+        >
+          <SafeAreaView style={styles.profileModalOverlay}>
+            <View style={styles.profileModalHeader}>
+              <TouchableOpacity onPress={() => setShowPasswordModal(false)} style={styles.profileModalCloseButton}>
+                <Text style={styles.profileModalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.profileModalTitle}>Set New Password</Text>
+              <TouchableOpacity onPress={handlePasswordSave} style={styles.profileModalSaveButton} disabled={passwordLoading}>
+                <Text style={styles.profileModalSaveButtonText}>{passwordLoading ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <KeyboardAvoidingView 
+              style={styles.profileModalContent}
+              behavior="padding"
+              keyboardVerticalOffset={100}
+            >
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>New Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Confirm Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </Modal>
+      )}
       
       {/* Bottom Navigation - Hide when in chat thread */}
       {!isInChatThread && (
@@ -5573,6 +5820,8 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
   },
   filterButton: {
     backgroundColor: '#f3f4f6',
@@ -5622,6 +5871,17 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  refreshButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  refreshButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
   },
   editButton: {
     backgroundColor: '#265451',
