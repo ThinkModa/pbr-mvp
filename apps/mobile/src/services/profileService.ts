@@ -197,7 +197,7 @@ export class ProfileService {
   static async getProfessionalCategories(): Promise<ProfessionalCategory[]> {
     try {
       const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/professional_categories?select=*&is_active=eq.true&order=sort_order.asc`,
+        `${this.SUPABASE_URL}/rest/v1/professional_categories?select=*&is_active=eq.true&order=name.asc`,
         {
           headers: this.getHeaders(),
         }
@@ -222,7 +222,7 @@ export class ProfileService {
   static async getCommunityInterests(): Promise<CommunityInterest[]> {
     try {
       const response = await fetch(
-        `${this.SUPABASE_URL}/rest/v1/community_interests?select=*&is_active=eq.true&order=sort_order.asc`,
+        `${this.SUPABASE_URL}/rest/v1/community_interests?select=*&is_active=eq.true&order=name.asc`,
         {
           headers: this.getHeaders(),
         }

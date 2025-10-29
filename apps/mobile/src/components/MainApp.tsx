@@ -2413,7 +2413,7 @@ const ProfileScreen: React.FC = () => {
         lastName: user.name?.split(' ')[1] || 'Doe',
         phoneNumber: '(555) 123-4567',
         tShirtSize: 'Large',
-        dietaryRestrictions: 'None',
+        dietaryRestrictions: 'Vegetarian',
         accessibilityNeeds: 'None',
         bio: 'Passionate about community building and social impact. Love connecting with like-minded individuals.',
         organizationAffiliation: 'TechCorp Inc.',
@@ -2463,26 +2463,31 @@ const ProfileScreen: React.FC = () => {
       console.error('Error loading categories:', error);
       // Fallback to mock data
       const mockCategories = [
-        { id: '1', name: 'Technology' },
-        { id: '2', name: 'Engineering' },
-        { id: '3', name: 'Healthcare' },
-        { id: '4', name: 'Education' },
-        { id: '5', name: 'Finance' },
-        { id: '6', name: 'Marketing' },
-        { id: '7', name: 'Sales' },
-        { id: '8', name: 'Design' },
-        { id: '9', name: 'Consulting' },
-        { id: '10', name: 'Legal' },
-        { id: '11', name: 'Real Estate' },
-        { id: '12', name: 'Non-Profit' },
-        { id: '13', name: 'Government' },
-        { id: '14', name: 'Media' },
-        { id: '15', name: 'Retail' },
-        { id: '16', name: 'Manufacturing' },
-        { id: '17', name: 'Transportation' },
-        { id: '18', name: 'Construction' },
         { id: '19', name: 'Agriculture' },
-        { id: '20', name: 'Other' }
+        { id: '20', name: 'Art' },
+        { id: '9', name: 'Consulting' },
+        { id: '23', name: 'Communications' },
+        { id: '18', name: 'Construction' },
+        { id: '8', name: 'Design' },
+        { id: '22', name: 'Economics' },
+        { id: '4', name: 'Education' },
+        { id: '2', name: 'Engineering' },
+        { id: '24', name: 'Entrepreneurship' },
+        { id: '5', name: 'Finance' },
+        { id: '13', name: 'Government' },
+        { id: '3', name: 'Healthcare' },
+        { id: '21', name: 'Human resources' },
+        { id: '10', name: 'Legal' },
+        { id: '6', name: 'Marketing' },
+        { id: '16', name: 'Manufacturing' },
+        { id: '14', name: 'Media' },
+        { id: '12', name: 'Non-Profit' },
+        { id: '25', name: 'Other' },
+        { id: '11', name: 'Real Estate' },
+        { id: '15', name: 'Retail' },
+        { id: '7', name: 'Sales' },
+        { id: '1', name: 'Technology' },
+        { id: '17', name: 'Transportation' }
       ];
       setAvailableCategories(mockCategories);
     }
@@ -2507,26 +2512,25 @@ const ProfileScreen: React.FC = () => {
       console.error('Error loading interests:', error);
       // Fallback to mock data
       const mockInterests = [
-        { id: '1', name: 'Social Justice' },
-        { id: '2', name: 'Education' },
-        { id: '3', name: 'Health & Wellness' },
-        { id: '4', name: 'Environment' },
-        { id: '5', name: 'Arts & Culture' },
-        { id: '6', name: 'Technology' },
-        { id: '7', name: 'Community Development' },
-        { id: '8', name: 'Youth Development' },
-        { id: '9', name: 'Senior Care' },
-        { id: '10', name: 'Housing' },
-        { id: '11', name: 'Food Security' },
-        { id: '12', name: 'Economic Development' },
-        { id: '13', name: 'Civic Engagement' },
-        { id: '14', name: 'Sports & Recreation' },
         { id: '15', name: 'Animal Welfare' },
-        { id: '16', name: 'Veterans Support' },
+        { id: '5', name: 'Arts & Culture' },
+        { id: '7', name: 'Community Development' },
+        { id: '13', name: 'Civic Engagement' },
+        { id: '12', name: 'Economic Development' },
+        { id: '2', name: 'Education' },
+        { id: '4', name: 'Environment' },
+        { id: '11', name: 'Food Security' },
+        { id: '3', name: 'Health & Wellness' },
+        { id: '10', name: 'Housing' },
         { id: '17', name: 'Immigration' },
-        { id: '18', name: 'Disability Advocacy' },
         { id: '19', name: 'LGBTQ+ Rights' },
-        { id: '20', name: 'Other' }
+        { id: '20', name: 'Other' },
+        { id: '1', name: 'Social Justice' },
+        { id: '9', name: 'Senior Care' },
+        { id: '14', name: 'Sports & Recreation' },
+        { id: '6', name: 'Technology' },
+        { id: '16', name: 'Veterans Support' },
+        { id: '8', name: 'Youth Development' }
       ];
       setAvailableInterests(mockInterests);
     }
@@ -2870,11 +2874,13 @@ const ProfileScreen: React.FC = () => {
             <View style={styles.profileInfoContent}>
               <Text style={styles.profileInfoLabel}>Professional Categories</Text>
               <View style={styles.profileChipsContainer}>
-                {profile.professionalCategories.map((category: any) => (
-                  <View key={category.id} style={styles.profileChip}>
-                    <Text style={styles.profileChipText}>{category.name}</Text>
-                  </View>
-                ))}
+                {profile.professionalCategories
+                  .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                  .map((category: any) => (
+                    <View key={category.id} style={styles.profileChip}>
+                      <Text style={styles.profileChipText}>{category.name}</Text>
+                    </View>
+                  ))}
                 <TouchableOpacity style={styles.profileAddChip} onPress={handleAddCategories}>
                   <Text style={styles.profileAddChipText}>+ Add More</Text>
                 </TouchableOpacity>
@@ -2891,11 +2897,13 @@ const ProfileScreen: React.FC = () => {
             <View style={styles.profileInfoContent}>
               <Text style={styles.profileInfoLabel}>Community Interests</Text>
               <View style={styles.profileChipsContainer}>
-                {profile.communityInterests.map((interest: any) => (
-                  <View key={interest.id} style={styles.profileChip}>
-                    <Text style={styles.profileChipText}>{interest.name}</Text>
-                  </View>
-                ))}
+                {profile.communityInterests
+                  .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                  .map((interest: any) => (
+                    <View key={interest.id} style={styles.profileChip}>
+                      <Text style={styles.profileChipText}>{interest.name}</Text>
+                    </View>
+                  ))}
                 <TouchableOpacity style={styles.profileAddChip} onPress={handleAddInterests}>
                   <Text style={styles.profileAddChipText}>+ Add More</Text>
                 </TouchableOpacity>
@@ -3268,7 +3276,7 @@ const ProfileEditModal: React.FC<{
   };
 
   const tShirtSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
-  const dietaryOptions = ['None', 'Vegan', 'Vegetarian', 'Pescatarian', 'Other'];
+  const dietaryOptions = ['Vegetarian', 'Vegan', 'Gluten-free', 'Dairy-free', 'Nut allergy', 'Shellfish allergy', 'Pescatarian', 'No beef', 'No pork', 'Other'];
   const accessibilityOptions = ['None', 'Yes'];
 
   return (
