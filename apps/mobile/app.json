@@ -14,12 +14,12 @@
     },
     "android": {
       "package": "com.thinkmodalabs.pbrmvp",
-        "versionCode": 14,
+        "versionCode": 15,
       "googleServicesFile": "./google-services.json"
     },
     "ios": {
       "bundleIdentifier": "com.thinkmodalabs.pbr-mvp",
-        "buildNumber": "17",
+        "buildNumber": "18",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["remote-notification"],
