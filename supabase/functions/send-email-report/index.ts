@@ -47,21 +47,32 @@ serve(async (req) => {
     // Create email content
     const emailContent = createEmailContent(report)
     
-    // Send email using Supabase's email service
-    const { data, error } = await supabaseClient.functions.invoke('send-email', {
-      body: {
+    // Send email using Resend
+    const resendApiKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendApiKey) {
+      throw new Error('RESEND_API_KEY is not set in environment variables.')
+    }
+
+    const resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: 'Plant Built Restore <onboarding@resend.dev>',
         to: to,
         subject: report.subject,
         html: emailContent.html,
         text: emailContent.text,
-        from: 'PBR MVP App <noreply@thinkmodalabs.com>'
-      }
+      }),
     })
 
-    if (error) {
-      console.error('Error sending email:', error)
+    const resendData = await resendResponse.json()
+    if (!resendResponse.ok) {
+      console.error('Resend API error:', resendData)
       return new Response(
-        JSON.stringify({ error: 'Failed to send email' }),
+        JSON.stringify({ error: resendData.message || 'Failed to send email via Resend' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -69,13 +80,15 @@ serve(async (req) => {
       )
     }
 
+    console.log('Email sent successfully via Resend:', resendData)
+
     // Log the report to database for tracking
     await logReportToDatabase(supabaseClient, report)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        messageId: data?.messageId || 'unknown' 
+        messageId: resendData?.id || 'unknown' 
       }),
       { 
         status: 200, 
