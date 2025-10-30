@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
+  Platform,
+  KeyboardAvoidingView,
   Alert,
   ActivityIndicator,
   FlatList,
   RefreshControl,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
   Linking,
   ActionSheetIOS,
 } from 'react-native';
@@ -58,6 +58,7 @@ import { NotificationService } from '../services/notificationService';
 import { ProfileService } from '../services/profileService';
 import { TrackService } from '../services/trackService';
 import CacheService from '../services/cacheService';
+import { EmailService } from '../services/emailService';
 import EventModal from './EventModal';
 import ActivityModal from './ActivityModal';
 import SpeakerModal from './SpeakerModal';
@@ -2361,6 +2362,11 @@ const ProfileScreen: React.FC = () => {
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showInterestsModal, setShowInterestsModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportName, setReportName] = useState('');
+  const [reportEmail, setReportEmail] = useState('');
+  const [reportMessage, setReportMessage] = useState('');
+  const [sendingReport, setSendingReport] = useState(false);
   const [availableCategories, setAvailableCategories] = useState<any[]>([]);
   const [availableInterests, setAvailableInterests] = useState<any[]>([]);
   const [newPassword, setNewPassword] = useState('');
@@ -2561,6 +2567,45 @@ const ProfileScreen: React.FC = () => {
 
   const handleEditProfile = () => {
     setShowEditModal(true);
+  };
+
+  const handleShowReport = () => {
+    setReportName(user?.name || '');
+    setReportEmail(user?.email || '');
+    setReportMessage('');
+    setShowReportModal(true);
+  };
+
+  const handleSendReport = async () => {
+    if (!reportName.trim() || !reportEmail.trim() || !reportMessage.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (!EmailService.isValidEmail(reportEmail.trim())) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    setSendingReport(true);
+    try {
+      const result = await EmailService.sendQuickFeedback(reportMessage.trim(), reportEmail.trim());
+      
+      if (result.success) {
+        Alert.alert('Success', 'Your feedback has been sent! We\'ll get back to you soon.');
+        setShowReportModal(false);
+        setReportName('');
+        setReportEmail('');
+        setReportMessage('');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send feedback. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error sending report:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setSendingReport(false);
+    }
   };
 
   const handleAddCategories = () => {
@@ -2977,6 +3022,9 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.profilePageActionButton} onPress={handleChangePassword}>
             <Text style={styles.profilePageActionButtonText}>Change Password</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.profilePageActionButton} onPress={handleShowReport}>
+            <Text style={styles.profilePageActionButtonText}>Send Feedback</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.profileSignOutButton} onPress={handleSignOut}>
             <Text style={styles.profileSignOutButtonText}>Sign Out</Text>
           </TouchableOpacity>
@@ -3079,8 +3127,6 @@ const ProfileScreen: React.FC = () => {
 
             <KeyboardAvoidingView 
               style={styles.profileModalContent}
-              behavior="padding"
-              keyboardVerticalOffset={100}
             >
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>New Password</Text>
@@ -3111,6 +3157,103 @@ const ProfileScreen: React.FC = () => {
           </SafeAreaView>
         </Modal>
       )}
+
+          {/* Report/Feedback Modal */}
+          <Modal
+            visible={showReportModal}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setShowReportModal(false)}
+          >
+            <KeyboardAvoidingView 
+              style={styles.modalOverlay}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+              <View style={styles.staticModalContent}>
+            <Text style={styles.newChatModalTitle}>Send Feedback</Text>
+            <Text style={styles.newChatModalSubtitle}>
+              Share your thoughts, report an issue, or request a feature
+            </Text>
+
+            {/* Name Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Your Name</Text>
+              <TextInput
+                style={styles.textInput}
+                value={reportName}
+                onChangeText={setReportName}
+                placeholder="Enter your name..."
+                maxLength={100}
+                returnKeyType="next"
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Email Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Your Email</Text>
+              <TextInput
+                style={styles.textInput}
+                value={reportEmail}
+                onChangeText={setReportEmail}
+                placeholder="Enter your email..."
+                maxLength={100}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Message Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Message</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                value={reportMessage}
+                onChangeText={setReportMessage}
+                placeholder="Tell us what's on your mind..."
+                multiline
+                numberOfLines={4}
+                maxLength={1000}
+                textAlignVertical="top"
+                returnKeyType="default"
+                blurOnSubmit={false}
+              />
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowReportModal(false);
+                  setReportName('');
+                  setReportEmail('');
+                  setReportMessage('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.confirmButton,
+                  sendingReport && styles.confirmButtonDisabled
+                ]}
+                onPress={handleSendReport}
+                disabled={sendingReport}
+              >
+                <Text style={styles.confirmButtonText}>
+                  {sendingReport ? 'Sending...' : 'Send'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
       </SafeAreaView>
     // </PerformanceMeasureView>
   );
@@ -3296,11 +3439,7 @@ const ProfileEditModal: React.FC<{
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView 
-          style={styles.profileModalContent}
-          behavior="padding"
-          keyboardVerticalOffset={100}
-        >
+        <KeyboardAvoidingView style={styles.profileModalContent}>
           <ScrollView 
             style={styles.profileModalContent}
             showsVerticalScrollIndicator={false}
@@ -5325,8 +5464,6 @@ const ChatThreadScreen: React.FC<{
         {/* Message Input - Hide for notification threads */}
         {thread?.threadType !== 'notification' && (
           <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 108 : 0}
             style={styles.keyboardAvoidingInput}
           >
             <View style={styles.messageInputContainer}>
@@ -5709,8 +5846,6 @@ const MainApp: React.FC = () => {
 
             <KeyboardAvoidingView 
               style={styles.profileModalContent}
-              behavior="padding"
-              keyboardVerticalOffset={100}
             >
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>New Password</Text>
@@ -6573,7 +6708,7 @@ const styles = StyleSheet.create({
   // New Chat Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -6591,10 +6726,10 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '90%',
     maxWidth: 500,
-    position: 'absolute',
-    top: '15%',
-    left: '5%',
-    height: 410, // Added 10px for breathing room below buttons
+    alignSelf: 'center',
+    marginTop: '13%', // Moved down 3px from 12% to 13%
+    marginBottom: 20, // Add bottom margin for breathing room
+    // Removed position: 'absolute' and height to make it flexible
   },
   // Swipe-to-delete styles
   deleteAction: {
